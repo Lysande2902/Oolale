@@ -1,0 +1,225 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
+import '../../models/conversation.dart';
+import '../../config/constants.dart';
+
+class MessagesScreen extends StatefulWidget {
+  const MessagesScreen({super.key});
+
+  @override
+  State<MessagesScreen> createState() => _MessagesScreenState();
+}
+
+class _MessagesScreenState extends State<MessagesScreen> {
+  final _supabase = Supabase.instance.client;
+  List<Conversation> _conversations = [];
+  bool _isLoading = true;
+  StreamSubscription? _subscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadConversations();
+    _setupRealtime();
+  }
+
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    super.dispose();
+  }
+
+  void _setupRealtime() {
+    _subscription = _supabase
+        .from('intercom')
+        .stream(primaryKey: ['id'])
+        .listen((_) => _loadConversations());
+  }
+
+  Future<void> _loadConversations() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    try {
+      final data = await _supabase
+          .from('intercom')
+          .select('*, profiles!intercom_remitente_id_fkey(nombre_artistico, avatar_url)')
+          .or('remitente_id.eq.$userId,destinatario_id.eq.$userId')
+          .order('created_at', ascending: false);
+
+      final Map<String, Conversation> chatGroups = {};
+      
+      for (var msg in data) {
+        final String otherId = msg['remitente_id'] == userId 
+            ? msg['destinatario_id'] 
+            : msg['remitente_id'];
+        
+        if (!chatGroups.containsKey(otherId)) {
+          chatGroups[otherId] = Conversation(
+            interlocutorId: otherId,
+            interlocutorName: msg['profiles']?['nombre_artistico'] ?? 'Artista',
+            interlocutorPhoto: msg['profiles']?['avatar_url'],
+            lastMessage: msg['riff_text'] ?? '',
+            lastDate: DateTime.parse(msg['created_at']),
+            unreadCount: (msg['remitente_id'] != userId && !msg['leido']) ? 1 : 0,
+          );
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _conversations = chatGroups.values.toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: Text('Mensajes', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
+          : _conversations.isEmpty
+              ? _buildEmptyState()
+              : _buildList(),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => context.push('/search'),
+        backgroundColor: AppConstants.primaryColor,
+        child: const Icon(Icons.add, color: Colors.black),
+      ),
+    );
+  }
+
+  Widget _buildList() {
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      physics: const BouncingScrollPhysics(),
+      itemCount: _conversations.length,
+      itemBuilder: (context, index) {
+        final convo = _conversations[index];
+        return _ConversationTile(conversation: convo);
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.chat_bubble_outline, size: 60, color: Colors.white10),
+          const SizedBox(height: 16),
+          Text(
+            'Sin mensajes aún',
+            style: GoogleFonts.outfit(color: Colors.grey[700], fontSize: 16),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ConversationTile extends StatelessWidget {
+  final Conversation conversation;
+  const _ConversationTile({required this.conversation});
+
+  @override
+  Widget build(BuildContext context) {
+    final hasUnread = conversation.unreadCount > 0;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: hasUnread ? AppConstants.primaryColor.withOpacity(0.3) : Theme.of(context).dividerColor.withOpacity(0.05)
+        ),
+      ),
+      child: InkWell(
+        onTap: () => context.push('/messages/${conversation.interlocutorId}', extra: conversation.interlocutorName),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 25,
+                backgroundColor: const Color(0xFF1E1E1E),
+                backgroundImage: conversation.interlocutorPhoto != null ? NetworkImage(conversation.interlocutorPhoto!) : null,
+                child: conversation.interlocutorPhoto == null 
+                  ? Text(conversation.interlocutorName.substring(0, 1).toUpperCase(), 
+                      style: const TextStyle(color: AppConstants.primaryColor, fontWeight: FontWeight.bold))
+                  : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          conversation.interlocutorName,
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                        Text(
+                          _formatDate(conversation.lastDate),
+                          style: GoogleFonts.outfit(color: Colors.grey[800], fontSize: 11),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      conversation.lastMessage,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.outfit(
+                        color: hasUnread ? Colors.white : Colors.grey[600],
+                        fontSize: 13,
+                        fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (hasUnread)
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(color: AppConstants.primaryColor, shape: BoxShape.circle),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    if (date.year == now.year && date.month == now.month && date.day == now.day) {
+      return DateFormat('HH:mm').format(date);
+    }
+    return DateFormat('dd/MM').format(date);
+  }
+}
