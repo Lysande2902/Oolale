@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../config/constants.dart';
 import '../../models/event.dart';
 
@@ -115,6 +116,11 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
     }
   }
 
+  void _shareGig() {
+    if (_gig == null) return;
+    Share.share('¡Checa este evento en Óolale! ${_gig!.titulo} @ ${_gig!.ubicacion} - https://oolale.app/gig/${widget.gigId}');
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -154,7 +160,8 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
           _buildHeroImage(),
           _buildDetailContent(),
           _buildAppBar(),
-          _buildStickyAction(),
+          if (_gig?.organizadorId != _supabase.auth.currentUser?.id)
+             _buildStickyAction(),
         ],
       ),
     );
@@ -164,9 +171,19 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
     return Positioned(
       top: 40,
       left: 10,
-      child: IconButton(
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Navigator.pop(context),
+      right: 10,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Separar botones
+        children: [
+          IconButton(
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.pop(context),
+          ),
+          IconButton(
+            icon: const Icon(Icons.share, color: Colors.white),
+            onPressed: _shareGig,
+          ),
+        ],
       ),
     );
   }

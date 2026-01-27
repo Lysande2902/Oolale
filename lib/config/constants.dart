@@ -43,6 +43,7 @@ class AppConstants {
   // LEGACY (para compatibilidad)
   static const Color aquamarineColor = Color(0xFF06B6D4); // Cyan Alternativo
   static const Color accentColor = Color(0xFFFFC107); // Gold (aún usado)
+  static const Color timeAgoColor = Color(0xFFFFB74D); // Naranja suave para destacados
   
   static const double defaultPadding = 24.0;
   static const double borderRadius = 20.0;

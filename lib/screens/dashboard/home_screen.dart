@@ -132,7 +132,7 @@ class _StreamView extends StatefulWidget {
 
 class _StreamViewState extends State<_StreamView> {
   final _supabase = Supabase.instance.client;
-  List<dynamic> _trendingGigs = [];
+  List<dynamic> _trendingGigs = []; // Se usa como fallback o para gigs urgentes
   List<Post> _posts = [];
   bool _isLoading = true;
   final TextEditingController _postController = TextEditingController();
@@ -141,69 +141,77 @@ class _StreamViewState extends State<_StreamView> {
   String? _artisticName;
   String? _profileAvatar;
   
-  // Rotación de eventos destacados
+  // Rotación
   Timer? _featuredGigTimer;
   int _currentFeaturedIndex = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadStreamData();
-    _setupRealtime();
-  }
-
-  @override
-  void dispose() {
-    _postSubscription?.cancel();
-    _postController.dispose();
-    _featuredGigTimer?.cancel(); // Cancelar timer al dispose
-    super.dispose();
-  }
-
-  void _setupRealtime() {
-    _postSubscription = _supabase
-        .from('posts')
-        .stream(primaryKey: ['id'])
-        .listen((_) => _loadStreamData());
-  }
+  List<dynamic> _urgentGigs = [];
+  List<dynamic> _headliners = [];
+  bool _showHeadliner = false; // Toggle to show headliner vs gig
 
   Future<void> _loadStreamData() async {
     final userId = _supabase.auth.currentUser?.id;
     try {
-      // 1. Cargar datos del perfil propio para el Header
+      // 1. Cargar perfil propio
+      // 1. Cargar perfil propio
       if (userId != null) {
-        final profile = await _supabase.from('profiles').select('nombre_artistico, avatar_url').eq('id', userId).maybeSingle();
+        debugPrint('HOME: Cargando perfil para $userId');
+        final profile = await _supabase.from('profiles').select().eq('id', userId).maybeSingle();
+        debugPrint('HOME: Perfil cargado: $profile');
+        
         if (profile != null && mounted) {
           setState(() {
             _artisticName = profile['nombre_artistico'];
+            // Fallback robusto
+            if (_artisticName == null || _artisticName!.trim().isEmpty) {
+               _artisticName = profile['nombre_completo'];
+            }
             _profileAvatar = profile['avatar_url'];
           });
         }
       }
 
-      // 2. Cargar Gigs y Posts
-      final gigs = await _supabase.from('gigs')
+      final today = DateTime.now().toIso8601String().split('T')[0];
+      final threeDaysLater = DateTime.now().add(const Duration(days: 7)).toIso8601String().split('T')[0];
+
+      // 2. Gigs Urgentes (Próximos 7 días)
+      final urgentGigsResponse = await _supabase.from('gigs')
           .select()
-          .order('created_at', ascending: false)
+          .gte('fecha_gig', today)
+          .lte('fecha_gig', threeDaysLater)
           .limit(10);
       
+      // 3. Headliners (Artistas Destacados)
+      final headlinersResponse = await _supabase.from('profiles')
+          .select()
+          .eq('estatus_headliner', true)
+          .limit(10);
+
+      // 4. Últimos Posts
       final postsData = await _supabase
           .from('posts')
           .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, avatar_url)')
           .order('created_at', ascending: false)
-          .limit(5);
+          .limit(10); // Traemos más para que se vea lleno
 
       if (mounted) {
         setState(() {
-          _trendingGigs = gigs;
+          // Mezclar un poco para que sea dinámico
+          _urgentGigs = List.from(urgentGigsResponse)..shuffle();
+          _headliners = List.from(headlinersResponse)..shuffle();
+          
+          // Fallback si no hay urgentes, usar cualquiera futuro
+          if (_urgentGigs.isEmpty) {
+             _loadBackupGigs();
+          } else {
+             _trendingGigs = _urgentGigs;
+          }
+
           _posts = (postsData as List).map((p) => Post.fromJson(p)).toList();
           _isLoading = false;
         });
         
-        // Iniciar timer para rotar eventos cada minuto (si hay al menos 4 eventos)
-        if (gigs.length >= 4) {
-          _startFeaturedGigRotation();
-        }
+        _startFeaturedRotation();
       }
     } catch (e) {
       debugPrint('Error loading stream: $e');
@@ -211,20 +219,51 @@ class _StreamViewState extends State<_StreamView> {
     }
   }
 
-  void _startFeaturedGigRotation() {
-    // Cancelar timer anterior si existe
-    _featuredGigTimer?.cancel();
+  Future<void> _loadBackupGigs() async {
+    // Cargar cualquier evento futuro si no hay urgentes
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    final response = await _supabase.from('gigs')
+        .select()
+        .gte('fecha_gig', today)
+        .order('fecha_gig', ascending: true)
+        .limit(5);
     
-    // Crear nuevo timer que cambia cada 60 segundos (1 minuto)
-    _featuredGigTimer = Timer.periodic(const Duration(seconds: 60), (timer) {
-      if (mounted && _trendingGigs.isNotEmpty) {
+    if (mounted) {
+      if (response.isNotEmpty) {
+          setState(() {
+            _trendingGigs = response; // Sin shuffle para que sean los más próximos
+          });
+      } else {
+         // Si de plano no hay nada, no mostramos nada o mostramos pasados (no ideal)
+         setState(() => _trendingGigs = []);
+      }
+    }
+  }
+
+  void _startFeaturedRotation() {
+    _featuredGigTimer?.cancel();
+    _featuredGigTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (mounted) {
         setState(() {
-          _currentFeaturedIndex = (_currentFeaturedIndex + 1) % _trendingGigs.length;
+          // Rotar entre Gigs y Headliners si hay ambos
+          if (_urgentGigs.isNotEmpty && _headliners.isNotEmpty) {
+             _showHeadliner = !_showHeadliner; 
+          } else if (_headliners.isNotEmpty) {
+             _showHeadliner = true;
+          } else {
+             _showHeadliner = false;
+          }
+
+          // Rotar índice del carrusel específico
+          if (!_showHeadliner && _urgentGigs.isNotEmpty) {
+             _currentFeaturedIndex = (_currentFeaturedIndex + 1) % _urgentGigs.length;
+          } else if (_showHeadliner && _headliners.isNotEmpty) {
+             _currentFeaturedIndex = (_currentFeaturedIndex + 1) % _headliners.length;
+          }
         });
       }
     });
   }
-
   Future<void> _createPost() async {
     final content = _postController.text.trim();
     if (content.isEmpty) return;
@@ -344,125 +383,148 @@ class _StreamViewState extends State<_StreamView> {
               const SizedBox(height: 30),
 
               // PRÓXIMO EVENTO (DESTACADO CON ROTACIÓN)
-              if (featuredGig != null) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Destacado', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
-                    // Mostrar indicador de eventos (Ej: 2/4 para el evento 2 de 4)
-                    if (_trendingGigs.length >= 4)
-                      Text('${_currentFeaturedIndex + 1}/${_trendingGigs.length}', 
-                        style: GoogleFonts.outfit(color: AppConstants.primaryColor, fontSize: 12, fontWeight: FontWeight.bold)),
-                  ],
-                ),
-                const SizedBox(height: 15),
-                GestureDetector(
-                  onTap: () => context.push('/gig/${featuredGig['id']}'),
-                  child: Container(
-                    height: 280,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20),
-                      color: Theme.of(context).cardColor,
-                      border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3), width: 1),
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Stack(
+              // LOGICA DE DESTACADO MIXTO (EVENTO URGENTE vs ARTISTA VIP)
+              Builder(
+                builder: (context) {
+                  dynamic featuredItem;
+                  bool isGig = true;
+
+                  if (_showHeadliner && _headliners.isNotEmpty) {
+                    featuredItem = _headliners[_currentFeaturedIndex % _headliners.length];
+                    isGig = false;
+                  } else if (_urgentGigs.isNotEmpty) {
+                    featuredItem = _urgentGigs[_currentFeaturedIndex % _urgentGigs.length];
+                    isGig = true;
+                  } else if (_trendingGigs.isNotEmpty) {
+                    featuredItem = _trendingGigs[_currentFeaturedIndex % _trendingGigs.length];
+                    isGig = true;
+                  }
+
+                  if (featuredItem == null) {
+                    return Container(
+                      height: 120,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+                      ),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
+                          Icon(Icons.event_outlined, color: Colors.grey[800], size: 40),
+                          const SizedBox(height: 10),
+                          Text('No hay eventos destacados', style: GoogleFonts.outfit(color: Colors.grey[700])),
+                        ],
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(isGig ? 'Evento Urgente' : 'Artista Destacado', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+                          // Indicador simple
                           Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                             decoration: BoxDecoration(
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  AppConstants.primaryColor.withOpacity(0.1),
-                                  Colors.black,
-                                ],
-                              ),
+                                color: AppConstants.timeAgoColor.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(4)
                             ),
+                            child: Text(isGig ? 'HOY/MAÑANA' : 'VIP', 
+                              style: GoogleFonts.outfit(color: AppConstants.timeAgoColor, fontSize: 10, fontWeight: FontWeight.bold)),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.all(20),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                        ],
+                      ),
+                      const SizedBox(height: 15),
+                      GestureDetector(
+                        onTap: () {
+                           if (isGig) {
+                             context.push('/gig/${featuredItem['id']}');
+                           } else {
+                             context.push('/portfolio/${featuredItem['id']}');
+                           }
+                        },
+                        child: Container(
+                          height: 280,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            color: Theme.of(context).cardColor,
+                            border: Border.all(color: isGig ? AppConstants.primaryColor.withOpacity(0.3) : Colors.purpleAccent.withOpacity(0.3), width: 1),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(20),
+                            child: Stack(
                               children: [
+                                // Background Image
+                                if (!isGig && featuredItem['banner_url'] != null)
+                                   Image.network(featuredItem['banner_url'], width: double.infinity, height: double.infinity, fit: BoxFit.cover),
+                                if (isGig && featuredItem['flyer_url'] != null)
+                                   Image.network(featuredItem['flyer_url'], width: double.infinity, height: double.infinity, fit: BoxFit.cover),
+                                
+                                // Overlay Gradient
                                 Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                   decoration: BoxDecoration(
-                                    color: AppConstants.primaryColor,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text('PRÓXIMO', style: GoogleFonts.outfit(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
-                                ),
-                                const SizedBox(height: 12),
-                                Text(
-                                  featuredGig['titulo_bolo'] ?? 'Evento',
-                                  style: GoogleFonts.outfit(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                                  maxLines: 2,
-                                ),
-                                const SizedBox(height: 8),
-                                Row(
-                                  children: [
-                                    Icon(Icons.location_on_outlined, color: AppConstants.primaryColor, size: 16),
-                                    const SizedBox(width: 6),
-                                    Expanded(
-                                      child: Text(
-                                        featuredGig['lugar_nombre'] ?? 'Ubicación',
-                                        style: GoogleFonts.outfit(color: Colors.grey[400], fontSize: 14),
-                                      ),
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topCenter,
+                                      end: Alignment.bottomCenter,
+                                      colors: [
+                                        Colors.transparent,
+                                        Colors.black.withOpacity(0.8),
+                                        Colors.black,
+                                      ],
+                                      stops: const [0.0, 0.6, 1.0],
                                     ),
-                                  ],
+                                  ),
+                                ),
+
+                                Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
+                                          borderRadius: BorderRadius.circular(6),
+                                        ),
+                                        child: Text(isGig ? 'PRÓXIMO' : 'HEADLINER', style: GoogleFonts.outfit(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+                                      ),
+                                      const SizedBox(height: 12),
+                                      Text(
+                                        isGig ? (featuredItem['titulo_bolo'] ?? 'Evento') : (featuredItem['nombre_artistico'] ?? 'Artista'),
+                                        style: GoogleFonts.outfit(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                                        maxLines: 2,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Row(
+                                        children: [
+                                          Icon(isGig ? Icons.location_on_outlined : Icons.music_note, color: isGig ? AppConstants.primaryColor : Colors.purpleAccent, size: 16),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              isGig ? (featuredItem['lugar_nombre'] ?? 'Ubicación') : (featuredItem['rol_principal'] ?? 'Músico'),
+                                              style: GoogleFonts.outfit(color: Colors.grey[400], fontSize: 14),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                // Indicadores de puntos para rotación
-                if (_trendingGigs.length >= 4)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 12),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(
-                        _trendingGigs.length,
-                        (index) => Container(
-                          width: 8,
-                          height: 8,
-                          margin: const EdgeInsets.symmetric(horizontal: 4),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: index == _currentFeaturedIndex
-                                ? AppConstants.primaryColor
-                                : AppConstants.primaryColor.withOpacity(0.3),
-                          ),
                         ),
                       ),
-                    ),
-                  ),
-              ] else ...[
-                Container(
-                  height: 120,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.event_outlined, color: Colors.grey[800], size: 40),
-                      const SizedBox(height: 10),
-                      Text('No hay eventos aún', style: GoogleFonts.outfit(color: Colors.grey[700])),
                     ],
-                  ),
-                )
-              ],
+                  );
+                }
+              ),
 
               const SizedBox(height: 30),
               _buildPostInput(),

@@ -14,19 +14,44 @@ class DiscoveryScreen extends StatefulWidget {
 class _DiscoveryScreenState extends State<DiscoveryScreen> {
   final _supabase = Supabase.instance.client; // Direct connection
   final TextEditingController _searchController = TextEditingController();
-  
   List<dynamic> _results = [];
   bool _isLoading = false;
   String _activeFilter = 'todos'; 
+
+  final ScrollController _scrollController = ScrollController();
+  int _page = 0;
+  bool _hasMore = true;
+  static const int _limit = 20;
 
   @override
   void initState() {
     super.initState();
     _performSearch('');
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
+        if (!_isLoading && _hasMore) {
+          _performSearch(_searchController.text, isLoadMore: true);
+        }
+      }
+    });
   }
 
-  Future<void> _performSearch(String query) async {
-    setState(() => _isLoading = true);
+  @override
+  void dispose() {
+    _searchController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _performSearch(String query, {bool isLoadMore = false}) async {
+    if (isLoadMore) {
+      if (!_hasMore) return;
+      _page++;
+    } else {
+      _page = 0;
+      _hasMore = true;
+      setState(() => _isLoading = true);
+    }
     
     try {
       var queryBuilder = _supabase.from('profiles').select();
@@ -44,17 +69,28 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         queryBuilder = queryBuilder.eq('open_to_work', true);
       }
 
-      // No mostrarse a uno mismo en búsquedas (¡autocuidado preventivo! jaja)
+      // No mostrarse a uno mismo en búsquedas
       final myId = _supabase.auth.currentUser?.id;
       if (myId != null) {
         queryBuilder = queryBuilder.neq('id', myId);
       }
 
-      final response = await queryBuilder.limit(20);
+      final from = _page * _limit;
+      final to = from + _limit - 1;
+      final response = await queryBuilder.range(from, to);
       
       if (mounted) {
         setState(() {
-          _results = response;
+          if (isLoadMore) {
+            _results.addAll(response);
+          } else {
+            _results = response;
+          }
+          
+          if (response.length < _limit) {
+            _hasMore = false;
+          }
+          
           _isLoading = false;
         });
       }
@@ -209,23 +245,40 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
             // 3. Grid Results
             Expanded(
-              child: _isLoading 
-                ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
-                : _results.isEmpty 
-                  ? Center(child: Text('No se encontraron resultados', style: GoogleFonts.outfit(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.4))))
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  _page = 0;
+                  _hasMore = true;
+                  await _performSearch(_searchController.text);
+                },
+                color: AppConstants.primaryColor,
+                backgroundColor: AppConstants.bgDarkPanel,
+                child: _results.isEmpty && !_isLoading
+                  ? Stack(
+                      children: [
+                        ListView(), // Para que el RefreshIndicator funcione
+                        Center(child: Text('No se encontraron resultados', style: GoogleFonts.outfit(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.4)))),
+                      ],
+                    )
                   : GridView.builder(
+                      controller: _scrollController,
                       padding: const EdgeInsets.all(15),
+                      physics: const AlwaysScrollableScrollPhysics(),
                       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: 2,
                         childAspectRatio: 0.8,
                         crossAxisSpacing: 15,
                         mainAxisSpacing: 15
                       ),
-                      itemCount: _results.length,
+                      itemCount: _results.length + (_hasMore ? 1 : 0),
                       itemBuilder: (context, index) {
+                        if (index == _results.length) {
+                          return const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor));
+                        }
                         return _buildArtistCard(_results[index], index);
                       },
                     ),
+              ),
             ),
           ],
         ),

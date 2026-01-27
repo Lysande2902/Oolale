@@ -4,10 +4,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:share_plus/share_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
 import 'edit_profile_screen.dart';
 import 'public_profile_screen.dart';
+import 'profile_detail_lists.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -61,7 +63,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final seguidoresData = await _supabase
           .from('crews')
           .select()
-          .eq('seguidor_id', user.id);
+          .eq('target_id', user.id);
 
       final musicData = await _supabase
           .from('perfil_gear')
@@ -107,6 +109,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (confirm == true && mounted) {
       await Provider.of<AuthProvider>(context, listen: false).logout();
     }
+  }
+
+  void _shareProfile() {
+    if (_profileData == null) return;
+    final slug = _profileData!['slug_url'] ?? "u/${_profileData!['id']}";
+    Share.share('¡Checa mi perfil en Óolale! ${_profileData!['nombre_artistico']} - https://oolale.app/$slug');
   }
 
   @override
@@ -175,6 +183,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   IconButton(
                     icon: const Icon(Icons.settings_outlined, color: Colors.white70),
                     onPressed: () => context.push('/settings'),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share_outlined, color: Colors.white70),
+                    onPressed: _shareProfile,
                   ),
                   IconButton(
                     icon: const Icon(Icons.logout_rounded, color: Colors.white70),
@@ -256,33 +268,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStat(_eventosCount.toString(), 'Eventos'),
+        _buildStat(
+          _eventosCount.toString(), 'Eventos',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: _profileData!['id']))),
+        ),
         Container(width: 1, height: 40, color: Theme.of(context).dividerColor.withOpacity(0.1)),
-        _buildStat(_seguidoresCount.toString(), 'Seguidores'),
+        _buildStat(
+          _seguidoresCount.toString(), 'Seguidores',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: _profileData!['id']))),
+        ),
         Container(width: 1, height: 40, color: Theme.of(context).dividerColor.withOpacity(0.1)),
-        _buildStat(_musicCount.toString(), 'Música'),
+        _buildStat(
+          _musicCount.toString(), 'Música', // Que es perfil_gear en realidad
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: _profileData!['id']))),
+        ),
       ],
     );
   }
 
-  Widget _buildStat(String value, String label) {
-    return Column(
-      children: [
-        Text(
-          value,
-          style: GoogleFonts.outfit(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-          ),
+  Widget _buildStat(String value, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.outfit(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            Text(
+              label,
+              style: GoogleFonts.outfit(
+                color: Colors.grey[600],
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
-        Text(
-          label,
-          style: GoogleFonts.outfit(
-            color: Colors.grey[600],
-            fontSize: 12,
-          ),
-        ),
-      ],
+      ),
     );
   }
 

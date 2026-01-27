@@ -54,6 +54,16 @@ CREATE TABLE IF NOT EXISTS public.gear_catalog (
     familia TEXT
 );
 
+-- Asegurar que la columna familia exista (en caso de que la tabla ya existiera sin ella)
+DO $$ 
+BEGIN 
+    BEGIN
+        ALTER TABLE public.gear_catalog ADD COLUMN familia TEXT;
+    EXCEPTION
+        WHEN duplicate_column THEN NULL;
+    END;
+END $$;
+
 CREATE TABLE IF NOT EXISTS public.generos_catalog (
     id SERIAL PRIMARY KEY,
     nombre TEXT UNIQUE NOT NULL
@@ -128,13 +138,13 @@ CREATE TABLE IF NOT EXISTS public.crews (
 
 -- 9. MENSAJERÍA (INTERCOM) - ⚠️ CORREGIDO
 CREATE TABLE IF NOT EXISTS public.intercom (
-    id_mensaje SERIAL PRIMARY KEY,
-    id_remitente UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
-    id_destinatario UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    id SERIAL PRIMARY KEY,
+    remitente_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+    destinatario_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
     riff_text TEXT NOT NULL,
     adjunto_url TEXT,
     leido BOOLEAN DEFAULT FALSE,
-    fecha_envio TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 10. SEGURIDAD - REPORTES
@@ -188,8 +198,8 @@ CREATE TABLE IF NOT EXISTS public.hirings (
 );
 
 -- 14. ÍNDICES PARA PERFORMANCE
-CREATE INDEX IF NOT EXISTS idx_intercom_conversation ON public.intercom(id_remitente, id_destinatario);
-CREATE INDEX IF NOT EXISTS idx_intercom_fecha ON public.intercom(fecha_envio DESC);
+CREATE INDEX IF NOT EXISTS idx_intercom_conversation ON public.intercom(remitente_id, destinatario_id);
+CREATE INDEX IF NOT EXISTS idx_intercom_fecha ON public.intercom(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications(user_id);
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON public.notifications(user_id, leido);
 CREATE INDEX IF NOT EXISTS idx_crews_perfil ON public.crews(perfil_id);
@@ -299,35 +309,48 @@ ALTER TABLE public.reports ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.hirings ENABLE ROW LEVEL SECURITY;
 
 -- Políticas Profiles
+DROP POLICY IF EXISTS "Perfiles públicos" ON public.profiles;
 CREATE POLICY "Perfiles públicos" ON public.profiles FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Editar propio perfil" ON public.profiles;
 CREATE POLICY "Editar propio perfil" ON public.profiles FOR UPDATE USING (auth.uid() = id);
 
 -- Políticas Gigs
+DROP POLICY IF EXISTS "Gigs públicos" ON public.gigs;
 CREATE POLICY "Gigs públicos" ON public.gigs FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Crear gigs" ON public.gigs;
 CREATE POLICY "Crear gigs" ON public.gigs FOR INSERT WITH CHECK (auth.uid() = organizador_id);
+DROP POLICY IF EXISTS "Editar propios gigs" ON public.gigs;
 CREATE POLICY "Editar propios gigs" ON public.gigs FOR UPDATE USING (auth.uid() = organizador_id);
 
 -- Políticas Intercom
+DROP POLICY IF EXISTS "Ver propios mensajes" ON public.intercom;
 CREATE POLICY "Ver propios mensajes" ON public.intercom FOR SELECT 
-    USING (auth.uid() = id_remitente OR auth.uid() = id_destinatario);
+    USING (auth.uid() = remitente_id OR auth.uid() = destinatario_id);
+DROP POLICY IF EXISTS "Enviar mensajes" ON public.intercom;
 CREATE POLICY "Enviar mensajes" ON public.intercom FOR INSERT 
-    WITH CHECK (auth.uid() = id_remitente);
+    WITH CHECK (auth.uid() = remitente_id);
 
 -- Políticas Notifications
+DROP POLICY IF EXISTS "Ver propias notificaciones" ON public.notifications;
 CREATE POLICY "Ver propias notificaciones" ON public.notifications FOR SELECT 
     USING (auth.uid() = user_id);
+DROP POLICY IF EXISTS "Marcar como leído" ON public.notifications;
 CREATE POLICY "Marcar como leído" ON public.notifications FOR UPDATE 
     USING (auth.uid() = user_id);
 
 -- Políticas Reports
+DROP POLICY IF EXISTS "Crear reportes" ON public.reports;
 CREATE POLICY "Crear reportes" ON public.reports FOR INSERT 
     WITH CHECK (auth.uid() = reporter_id);
 
 -- Políticas Hirings
+DROP POLICY IF EXISTS "Ver propias contrataciones" ON public.hirings;
 CREATE POLICY "Ver propias contrataciones" ON public.hirings FOR SELECT 
     USING (auth.uid() = employer_id OR auth.uid() = musician_id);
+DROP POLICY IF EXISTS "Crear ofertas" ON public.hirings;
 CREATE POLICY "Crear ofertas" ON public.hirings FOR INSERT 
     WITH CHECK (auth.uid() = employer_id);
+DROP POLICY IF EXISTS "Responder ofertas" ON public.hirings;
 CREATE POLICY "Responder ofertas" ON public.hirings FOR UPDATE 
     USING (auth.uid() = musician_id);
 
@@ -342,6 +365,26 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 21. DATOS SEMILLA
+-- Asegurar constraints de unicidad para ON CONFLICT
+DO $$ 
+BEGIN 
+    BEGIN
+        ALTER TABLE public.gear_catalog ADD CONSTRAINT gear_catalog_nombre_unique UNIQUE (nombre);
+    EXCEPTION
+        WHEN duplicate_object THEN NULL;
+        WHEN others THEN NULL;
+    END;
+END $$;
+
+DO $$ 
+BEGIN 
+    BEGIN
+        ALTER TABLE public.generos_catalog ADD CONSTRAINT generos_catalog_nombre_unique UNIQUE (nombre);
+    EXCEPTION
+        WHEN duplicate_object THEN NULL;
+        WHEN others THEN NULL;
+    END;
+END $$;
 INSERT INTO public.gear_catalog (nombre, familia) VALUES 
 ('Guitarra Eléctrica', 'Cuerdas'), ('Bajo Eléctrico', 'Cuerdas'), 
 ('Batería', 'Percusión'), ('Sintetizador', 'Teclados'), 

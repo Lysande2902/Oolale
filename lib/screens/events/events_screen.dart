@@ -18,34 +18,70 @@ class EventsScreen extends StatefulWidget {
 class _EventsScreenState extends State<EventsScreen> {
   final _supabase = Supabase.instance.client;
   final TextEditingController _searchController = TextEditingController();
-  
-  List<Evento> _allEvents = [];
-  List<Evento> _filteredEvents = [];
+  final _scrollController = ScrollController();
+  List<Evento> _events = [];
   bool _isLoading = true;
+  int _page = 0;
+  bool _hasMore = true;
+  static const int _limit = 20;
 
   @override
   void initState() {
     super.initState();
     _loadGigs();
+    _scrollController.addListener(() {
+      if (_scrollController.position.pixels == _scrollController.position.maxScrollExtent) {
+        if (!_isLoading && _hasMore) {
+          _loadGigs(isLoadMore: true);
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadGigs() async {
+  Future<void> _loadGigs({bool isLoadMore = false}) async {
+    if (isLoadMore) {
+      if (!_hasMore) return;
+      _page++;
+    } else {
+      _page = 0;
+      _hasMore = true;
+      setState(() => _isLoading = true);
+    }
+
     try {
-      final List<dynamic> data = await _supabase
-          .from('gigs')
-          .select()
-          .order('fecha_gig', ascending: true);
+      var queryBuilder = _supabase.from('gigs').select();
+      
+      final query = _searchController.text;
+      if (query.isNotEmpty) {
+        queryBuilder = queryBuilder.ilike('titulo_bolo', '%$query%'); // Buscar por título
+      }
+
+      final from = _page * _limit;
+      final to = from + _limit - 1;
+      
+      final List<dynamic> data = await queryBuilder
+          .order('fecha_gig', ascending: true)
+          .range(from, to);
           
       if (mounted) {
         setState(() {
-          _allEvents = data.map((e) => Evento.fromJson(e)).toList();
-          _filteredEvents = _allEvents;
+          final newEvents = data.map((e) => Evento.fromJson(e)).toList();
+          if (isLoadMore) {
+            _events.addAll(newEvents);
+          } else {
+            _events = newEvents;
+          }
+          
+          if (newEvents.length < _limit) {
+            _hasMore = false;
+          }
           _isLoading = false;
         });
       }
@@ -56,16 +92,8 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   void _performSearch(String query) {
-    setState(() {
-      if (query.isEmpty) {
-        _filteredEvents = _allEvents;
-      } else {
-        _filteredEvents = _allEvents.where((event) {
-          return event.titulo.toLowerCase().contains(query.toLowerCase()) ||
-                 event.ubicacion.toLowerCase().contains(query.toLowerCase());
-        }).toList();
-      }
-    });
+    // Debounce manual o simplemente recargar
+    _loadGigs();
   }
 
   @override
@@ -79,9 +107,9 @@ class _EventsScreenState extends State<EventsScreen> {
             _buildSearchBar(),
             _buildCreateButton(),
             Expanded(
-              child: _isLoading
+              child: _isLoading && _events.isEmpty
                   ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
-                  : _filteredEvents.isEmpty
+                  : _events.isEmpty
                       ? _buildEmptyState()
                       : _buildEventList(),
             ),
@@ -110,7 +138,7 @@ class _EventsScreenState extends State<EventsScreen> {
                 Text(
                   _searchController.text.isEmpty 
                     ? 'Todos' 
-                    : '${_filteredEvents.length}',
+                    : '${_events.length}',
                   style: GoogleFonts.outfit(
                     color: Colors.grey[600],
                     fontSize: 14,
@@ -196,17 +224,33 @@ class _EventsScreenState extends State<EventsScreen> {
   }
 
   Widget _buildEventList() {
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      physics: const BouncingScrollPhysics(),
-      itemCount: _filteredEvents.length,
-      itemBuilder: (context, index) {
-        return FadeInUp(
-          duration: const Duration(milliseconds: 300),
-          delay: Duration(milliseconds: index * 30),
-          child: _GigCard(event: _filteredEvents[index]),
-        );
+    return RefreshIndicator(
+      onRefresh: () async {
+        _page = 0;
+        _hasMore = true;
+        await _loadGigs();
       },
+      color: AppConstants.primaryColor,
+      backgroundColor: AppConstants.bgDarkPanel,
+      child: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _events.length + (_hasMore ? 1 : 0),
+        itemBuilder: (context, index) {
+          if (index == _events.length) {
+            return const Center(child: Padding(
+              padding: EdgeInsets.all(8.0),
+              child: CircularProgressIndicator(color: AppConstants.primaryColor),
+            ));
+          }
+          return FadeInUp(
+            duration: const Duration(milliseconds: 300),
+            delay: Duration(milliseconds: (index % 10) * 30), // Modulo to prevent long delays
+            child: _GigCard(event: _events[index]),
+          );
+        },
+      ),
     );
   }
 

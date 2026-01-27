@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
+import 'package:share_plus/share_plus.dart';
 import '../portfolio/portfolio_screen.dart';
 import '../messages/chat_screen.dart';
+import 'profile_detail_lists.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -43,7 +45,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       final seguidoresData = await _supabase
           .from('crews')
           .select()
-          .eq('seguidor_id', widget.userId);
+          .eq('target_id', widget.userId);
 
       if (mounted) {
         setState(() {
@@ -56,6 +58,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     } catch (e) {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _shareProfile() {
+    if (_profile == null) return;
+    Share.share('¡Checa este perfil en Óolale! ${_profile!['nombre_artistico']} - https://oolale.app/${_profile!['slug_url'] ?? "u/${widget.userId}"}');
   }
 
   @override
@@ -121,9 +128,19 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             Positioned(
               top: 10,
               left: 10,
-              child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white),
-                onPressed: () => Navigator.pop(context),
+              right: 10,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share, color: Colors.white),
+                    onPressed: _shareProfile,
+                  ),
+                ],
               ),
             ),
             Center(
@@ -164,25 +181,59 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceAround,
       children: [
-        _buildStat(_eventosCount.toString(), 'Eventos'),
+        _buildStat(
+          _eventosCount.toString(), 'Eventos',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: widget.userId))),
+        ),
         Container(width: 1, height: 40, color: Colors.grey[900]),
-        _buildStat(_seguidoresCount.toString(), 'Seguidores'),
+        _buildStat(
+          _seguidoresCount.toString(), 'Seguidores',
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: widget.userId))),
+        ),
         Container(width: 1, height: 40, color: Colors.grey[900]),
-        _buildStat('0', 'Galería'),
+        _buildStat(
+          '0', 'Música', // Que es perfil_gear en realidad
+          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: widget.userId))),
+        ),
       ],
     );
   }
 
-  Widget _buildStat(String value, String label) {
-    return Column(
-      children: [
-        Text(value, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold)),
-        Text(label, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 12)),
-      ],
+  Widget _buildStat(String value, String label, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          children: [
+            Text(value, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold)),
+            Text(label, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 12)),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildActionButtons() {
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    if (widget.userId == myId) {
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () => _shareProfile(),
+          icon: const Icon(Icons.share_outlined),
+          label: const Text('Compartir mi perfil'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: const BorderSide(color: AppConstants.primaryColor),
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      );
+    }
+  
     return Row(
       children: [
         Expanded(
