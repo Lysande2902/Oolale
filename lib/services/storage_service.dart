@@ -28,13 +28,28 @@ class StorageService {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
       final path = '$userId/$fileName';
 
+      print('📤 Subiendo archivo a portfolio...');
+      print('   Path: $path');
+      print('   Tamaño: ${await file.length()} bytes');
+
       // Subir el archivo
-      await _supabase.storage.from('portfolio').upload(path, file);
+      await _supabase.storage.from('portfolio').upload(
+        path, 
+        file,
+        fileOptions: const FileOptions(
+          upsert: false,
+        ),
+      );
+
+      print('✅ Archivo subido exitosamente');
 
       // Obtener URL pública
-      return _supabase.storage.from('portfolio').getPublicUrl(path);
+      final publicUrl = _supabase.storage.from('portfolio').getPublicUrl(path);
+      print('🔗 URL pública: $publicUrl');
+      
+      return publicUrl;
     } catch (e) {
-      print('Error en StorageService.uploadPortfolio: $e');
+      print('❌ Error en StorageService.uploadPortfolio: $e');
       return null;
     }
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class HireMusicianScreen extends StatefulWidget {
   const HireMusicianScreen({super.key});
@@ -111,7 +112,7 @@ class _HireMusicianScreenState extends State<HireMusicianScreen> with SingleTick
           controller: _tabController,
           indicatorColor: AppConstants.primaryColor,
           labelColor: AppConstants.primaryColor,
-          unselectedLabelColor: Colors.white54,
+          unselectedLabelColor: ThemeColors.secondaryText(context),
           tabs: [
             Tab(text: 'Recibidas (${_receivedOffers.length})'),
             Tab(text: 'Enviadas (${_sentOffers.length})'),
@@ -185,9 +186,9 @@ class _HireMusicianScreenState extends State<HireMusicianScreen> with SingleTick
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.work_outline, size: 80, color: Colors.white10),
+          Icon(Icons.work_outline, size: 80, color: ThemeColors.disabledText(context)),
           const SizedBox(height: 20),
-          Text(message, style: GoogleFonts.outfit(color: Colors.white38, fontSize: 16)),
+          Text(message, style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 16)),
         ],
       ),
     );
@@ -377,7 +378,7 @@ class _CreateOfferSheetState extends State<_CreateOfferSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Nueva Oferta de Trabajo', style: GoogleFonts.outfit(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+            Text('Nueva Oferta de Trabajo', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 22, fontWeight: FontWeight.bold)),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
               initialValue: _selectedType,

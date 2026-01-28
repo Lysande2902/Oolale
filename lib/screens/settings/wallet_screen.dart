@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class WalletScreen extends StatefulWidget {
   const WalletScreen({super.key});
@@ -63,12 +64,12 @@ class _WalletScreenState extends State<WalletScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppConstants.cardColor,
-        title: const Text('Agregar Fondos', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Agregar Fondos', style: TextStyle(color: ThemeColors.primaryText(context))),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Integración de pagos próximamente', style: TextStyle(color: Colors.white70)),
+            Text('Integración de pagos próximamente', style: TextStyle(color: ThemeColors.secondaryText(context))),
             const SizedBox(height: 16),
             Text(
               'MercadoPago • PayPal • Stripe',
@@ -89,7 +90,7 @@ class _WalletScreenState extends State<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppConstants.backgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text('BILLETERA', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
@@ -226,11 +227,11 @@ class _WalletScreenState extends State<WalletScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.receipt_long_rounded, size: 80, color: Colors.white10),
+            Icon(Icons.receipt_long_rounded, size: 80, color: ThemeColors.disabledText(context)),
             const SizedBox(height: 20),
             Text(
               'Sin transacciones aún',
-              style: GoogleFonts.outfit(color: Colors.white38, fontSize: 16),
+              style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 16),
             ),
           ],
         ),
@@ -294,7 +295,7 @@ class _TransactionTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppConstants.cardColor,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: color.withOpacity(0.2)),
       ),
@@ -326,7 +327,7 @@ class _TransactionTile extends StatelessWidget {
                 Text(
                   transaction['pasarela'] ?? 'Pago',
                   style: GoogleFonts.outfit(
-                    color: Colors.white,
+                    color: ThemeColors.primaryText(context),
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
                   ),
@@ -334,7 +335,7 @@ class _TransactionTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   DateFormat('dd MMM yyyy, HH:mm').format(date),
-                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                  style: TextStyle(color: ThemeColors.hintText(context), fontSize: 11),
                 ),
               ],
             ),

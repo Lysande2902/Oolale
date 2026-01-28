@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class CreateReportScreen extends StatefulWidget {
@@ -57,9 +58,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
           context: context,
           barrierDismissible: false,
           builder: (_) => AlertDialog(
-            backgroundColor: AppConstants.cardColor,
-            title: const Text('Reporte Enviado', style: TextStyle(color: Colors.white)),
-            content: const Text('Gracias por alertarnos. Nuestro equipo revisará este caso en breve.', style: TextStyle(color: Colors.white70)),
+            backgroundColor: Theme.of(context).cardColor,
+            title: Text('Reporte Enviado', style: TextStyle(color: ThemeColors.primaryText(context))),
+            content: Text('Gracias por alertarnos. Nuestro equipo revisará este caso en breve.', style: TextStyle(color: ThemeColors.secondaryText(context))),
             actions: [
               TextButton(
                 onPressed: () {
@@ -82,7 +83,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppConstants.backgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         title: Text('REPORTAR USUARIO', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
@@ -109,9 +110,9 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                     child: RichText(
                       text: TextSpan(
                         text: 'Estás reportando a ',
-                        style: const TextStyle(color: Colors.white70),
+                        style: TextStyle(color: ThemeColors.secondaryText(context)),
                         children: [
-                          TextSpan(text: widget.reportedUserName, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                          TextSpan(text: widget.reportedUserName, style: TextStyle(fontWeight: FontWeight.bold, color: ThemeColors.primaryText(context))),
                           const TextSpan(text: '. Esta acción es anónima y confidencial.')
                         ]
                       ),
@@ -123,12 +124,12 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             
             const SizedBox(height: 30),
 
-            Text('SELECCIONA UN MOTIVO', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+            Text('SELECCIONA UN MOTIVO', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             const SizedBox(height: 15),
 
             Container(
               decoration: BoxDecoration(
-                color: AppConstants.cardColor,
+                color: Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(15)
               ),
               child: Column(
@@ -137,7 +138,7 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
                   return RadioListTile<String>(
                     activeColor: AppConstants.errorColor,
                     tileColor: Colors.transparent,
-                    title: Text(entry.value, style: TextStyle(color: isSelected ? Colors.white : Colors.white60)),
+                    title: Text(entry.value, style: TextStyle(color: isSelected ? ThemeColors.primaryText(context) : ThemeColors.secondaryText(context))),
                     value: entry.key,
                     groupValue: _selectedReason,
                     onChanged: (v) => setState(() => _selectedReason = v!),
@@ -147,20 +148,20 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
             ),
 
             const SizedBox(height: 30),
-            Text('DETALLES ADICIONALES', style: GoogleFonts.outfit(color: Colors.white54, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+            Text('DETALLES ADICIONALES', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
             const SizedBox(height: 15),
 
             TextField(
               controller: _descController,
               maxLines: 5,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: ThemeColors.primaryText(context)),
               decoration: InputDecoration(
                 filled: true,
-                fillColor: AppConstants.cardColor,
+                fillColor: Theme.of(context).cardColor,
                 hintText: 'Describe la situación para ayudarnos a entender mejor el contexto...',
-                hintStyle: const TextStyle(color: Colors.white30),
+                hintStyle: TextStyle(color: ThemeColors.hintText(context)),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: const BorderSide(color: Colors.white24)),
+                focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide(color: ThemeColors.divider(context))),
               ),
             ),
 

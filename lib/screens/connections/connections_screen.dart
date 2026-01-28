@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 
@@ -186,7 +187,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppConstants.backgroundColor,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text('CONEXIONES', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
@@ -195,7 +196,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
           controller: _tabController,
           indicatorColor: AppConstants.primaryColor,
           labelColor: AppConstants.primaryColor,
-          unselectedLabelColor: Colors.white54,
+          unselectedLabelColor: ThemeColors.secondaryText(context),
           tabs: [
             Tab(text: 'Conexiones (${_connections.length})'),
             Tab(text: 'Solicitudes (${_pending.length})'),
@@ -220,16 +221,16 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.people_outline, size: 80, color: Colors.white10),
+            Icon(Icons.people_outline, size: 80, color: ThemeColors.disabledText(context)),
             const SizedBox(height: 20),
             Text(
               'Aún no tienes conexiones',
-              style: GoogleFonts.outfit(color: Colors.white38, fontSize: 18),
+              style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 18),
             ),
             const SizedBox(height: 10),
             Text(
               'Usa Discovery para encontrar músicos',
-              style: GoogleFonts.outfit(color: Colors.white24, fontSize: 14),
+              style: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
             ),
           ],
         ),
@@ -262,9 +263,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: AppConstants.cardColor,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.white10),
+            border: Border.all(color: ThemeColors.divider(context)),
           ),
           child: ListTile(
             contentPadding: const EdgeInsets.all(12),
@@ -278,15 +279,15 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
             ),
             title: Text(
               target?['nombre_artistico'] ?? 'Usuario',
-              style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold),
+              style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold),
             ),
             subtitle: Text(
               target?['instrumento_principal'] ?? 'Músico',
-              style: const TextStyle(color: Colors.white54, fontSize: 12),
+              style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 12),
             ),
             trailing: PopupMenuButton(
-              icon: const Icon(Icons.more_vert, color: Colors.white54),
-              color: AppConstants.cardColor,
+              icon: Icon(Icons.more_vert, color: ThemeColors.secondaryText(context)),
+              color: Theme.of(context).cardColor,
               itemBuilder: (context) => [
                 PopupMenuItem(
                   child: const Text('Ver Perfil', style: TextStyle(color: Colors.white)),
@@ -325,11 +326,11 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.inbox_outlined, size: 80, color: Colors.white10),
+            Icon(Icons.inbox_outlined, size: 80, color: ThemeColors.disabledText(context)),
             const SizedBox(height: 20),
             Text(
               'No hay solicitudes pendientes',
-              style: GoogleFonts.outfit(color: Colors.white38, fontSize: 18),
+              style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 18),
             ),
           ],
         ),
@@ -362,7 +363,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         return Container(
           margin: const EdgeInsets.only(bottom: 12),
           decoration: BoxDecoration(
-            color: AppConstants.cardColor,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: AppConstants.accentColor.withOpacity(0.3)),
           ),
@@ -380,11 +381,11 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
                 ),
                 title: Text(
                   requester?['nombre_artistico'] ?? 'Usuario',
-                  style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold),
+                  style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
                   'Quiere conectar contigo',
-                  style: const TextStyle(color: Colors.white54, fontSize: 12),
+                  style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 12),
                 ),
               ),
               Padding(

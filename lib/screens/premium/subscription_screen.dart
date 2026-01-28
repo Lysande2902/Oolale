@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class PremiumScreen extends StatelessWidget {
   const PremiumScreen({super.key});
@@ -22,10 +23,10 @@ class PremiumScreen extends StatelessWidget {
                     physics: const BouncingScrollPhysics(),
                     child: Column(
                       children: [
-                        _buildHeroSection(),
+                        _buildHeroSection(context),
                         _buildFeatures(context),
                         _buildPricingCards(context),
-                        _buildFAQ(),
+                        _buildFAQ(context),
                         const SizedBox(height: 40),
                       ],
                     ),
@@ -62,7 +63,7 @@ class PremiumScreen extends StatelessWidget {
         children: [
           IconButton(
             onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: ThemeColors.icon(context)),
           ),
           const Spacer(),
           Container(
@@ -92,7 +93,7 @@ class PremiumScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeroSection() {
+  Widget _buildHeroSection(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(30),
       child: Column(
@@ -135,7 +136,7 @@ class PremiumScreen extends StatelessWidget {
               'Desbloquea herramientas profesionales\ny conecta con más oportunidades',
               textAlign: TextAlign.center,
               style: GoogleFonts.outfit(
-                color: Colors.white54,
+                color: ThemeColors.secondaryText(context),
                 fontSize: 16,
               ),
             ),
@@ -210,7 +211,7 @@ class PremiumScreen extends StatelessWidget {
                 Text(
                   title,
                   style: GoogleFonts.outfit(
-                    color: Colors.white,
+                    color: ThemeColors.primaryText(context),
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -218,7 +219,7 @@ class PremiumScreen extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   desc,
-                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                  style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 13),
                 ),
               ],
             ),
@@ -330,7 +331,7 @@ class PremiumScreen extends StatelessWidget {
                       padding: const EdgeInsets.only(top: 12),
                       child: Text(
                         period,
-                        style: const TextStyle(color: Colors.white54, fontSize: 14),
+                        style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 14),
                       ),
                     ),
                   ],
@@ -374,7 +375,7 @@ class PremiumScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFAQ() {
+  Widget _buildFAQ(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -391,15 +392,15 @@ class PremiumScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          _buildFAQItem('¿Puedo cancelar en cualquier momento?', 'Sí, sin compromisos ni penalizaciones.'),
-          _buildFAQItem('¿Qué métodos de pago aceptan?', 'MercadoPago, PayPal, tarjetas de crédito/débito.'),
-          _buildFAQItem('¿Hay prueba gratis?', 'Sí, 7 días gratis para nuevos usuarios.'),
+          _buildFAQItem(context, '¿Puedo cancelar en cualquier momento?', 'Sí, sin compromisos ni penalizaciones.'),
+          _buildFAQItem(context, '¿Qué métodos de pago aceptan?', 'MercadoPago, PayPal, tarjetas de crédito/débito.'),
+          _buildFAQItem(context, '¿Hay prueba gratis?', 'Sí, 7 días gratis para nuevos usuarios.'),
         ],
       ),
     );
   }
 
-  Widget _buildFAQItem(String question, String answer) {
+  Widget _buildFAQItem(BuildContext context, String question, String answer) {
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
@@ -421,7 +422,7 @@ class PremiumScreen extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             answer,
-            style: const TextStyle(color: Colors.white54, fontSize: 13),
+            style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 13),
           ),
         ],
       ),
@@ -432,17 +433,17 @@ class PremiumScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppConstants.cardColor,
-        title: const Text('Próximamente', style: TextStyle(color: Colors.white)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Próximamente', style: TextStyle(color: ThemeColors.primaryText(context))),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.construction_rounded, color: AppConstants.accentColor, size: 60),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Estamos integrando los métodos de pago',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.white70),
+              style: TextStyle(color: ThemeColors.secondaryText(context)),
             ),
             const SizedBox(height: 12),
             Text(

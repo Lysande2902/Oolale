@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 import '../../models/conversation.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -125,11 +126,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.chat_bubble_outline, size: 60, color: Colors.white10),
+          Icon(Icons.chat_bubble_outline, size: 60, color: ThemeColors.iconSecondary(context)),
           const SizedBox(height: 16),
           Text(
             'Sin mensajes aún',
-            style: GoogleFonts.outfit(color: Colors.grey[700], fontSize: 16),
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 16),
           ),
         ],
       ),
@@ -151,7 +152,7 @@ class _ConversationTile extends StatelessWidget {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: hasUnread ? AppConstants.primaryColor.withOpacity(0.3) : Theme.of(context).dividerColor.withOpacity(0.05)
+          color: hasUnread ? AppConstants.primaryColor.withOpacity(0.3) : ThemeColors.divider(context)
         ),
       ),
       child: InkWell(
@@ -184,7 +185,7 @@ class _ConversationTile extends StatelessWidget {
                         ),
                         Text(
                           _formatDate(conversation.lastDate),
-                          style: GoogleFonts.outfit(color: Colors.grey[800], fontSize: 11),
+                          style: GoogleFonts.outfit(color: ThemeColors.iconSecondary(context), fontSize: 11),
                         ),
                       ],
                     ),
@@ -194,7 +195,7 @@ class _ConversationTile extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.outfit(
-                        color: hasUnread ? Colors.white : Colors.grey[600],
+                        color: hasUnread ? ThemeColors.primaryText(context) : ThemeColors.hintText(context),
                         fontSize: 13,
                         fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal,
                       ),

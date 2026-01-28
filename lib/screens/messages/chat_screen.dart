@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/message.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import 'package:intl/intl.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -123,12 +124,12 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppConstants.bgDarkPanel,
+        backgroundColor: Theme.of(context).cardColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
           onPressed: () => Navigator.pop(context),
         ),
         title: Row(
@@ -142,7 +143,7 @@ class _ChatScreenState extends State<ChatScreen> {
             const SizedBox(width: 12),
             Text(
               widget.userName,
-              style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+              style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold, fontSize: 18),
             ),
           ],
         ),
@@ -167,11 +168,11 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.chat_bubble_outline, size: 60, color: Colors.white10),
+          Icon(Icons.chat_bubble_outline, size: 60, color: ThemeColors.disabledText(context)),
           const SizedBox(height: 16),
           Text(
             'Inicia la conversación...',
-            style: GoogleFonts.outfit(color: Colors.grey[700], fontSize: 16),
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 16),
           ),
         ],
       ),
@@ -196,8 +197,8 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: AppConstants.bgDarkPanel,
-        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05))),
+        color: Theme.of(context).cardColor,
+        border: Border(top: BorderSide(color: ThemeColors.divider(context))),
       ),
       child: SafeArea(
         child: Row(
@@ -205,16 +206,16 @@ class _ChatScreenState extends State<ChatScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.black,
+                  color: Theme.of(context).scaffoldBackgroundColor,
                   borderRadius: BorderRadius.circular(25),
                   border: Border.all(color: AppConstants.primaryColor.withOpacity(0.2)),
                 ),
                 child: TextField(
                   controller: _messageController,
-                  style: GoogleFonts.outfit(color: Colors.white),
+                  style: GoogleFonts.outfit(color: ThemeColors.primaryText(context)),
                   decoration: InputDecoration(
                     hintText: 'Escribe un mensaje...',
-                    hintStyle: GoogleFonts.outfit(color: Colors.grey[700], fontSize: 14),
+                    hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   ),
@@ -253,14 +254,14 @@ class _MessageBubble extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isMe ? AppConstants.primaryColor : AppConstants.bgDarkPanel,
+          color: isMe ? AppConstants.primaryColor : Theme.of(context).cardColor,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(20),
             topRight: const Radius.circular(20),
             bottomLeft: Radius.circular(isMe ? 20 : 4),
             bottomRight: Radius.circular(isMe ? 4 : 20),
           ),
-          border: isMe ? null : Border.all(color: Colors.white.withOpacity(0.05)),
+          border: isMe ? null : Border.all(color: ThemeColors.divider(context)),
         ),
         child: Column(
           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
@@ -268,7 +269,7 @@ class _MessageBubble extends StatelessWidget {
             Text(
               message.content,
               style: GoogleFonts.outfit(
-                color: isMe ? Colors.black : Colors.white,
+                color: isMe ? Colors.black : ThemeColors.primaryText(context),
                 fontSize: 15,
                 fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
               ),
@@ -277,7 +278,7 @@ class _MessageBubble extends StatelessWidget {
             Text(
               DateFormat('HH:mm').format(message.sentAt),
               style: GoogleFonts.outfit(
-                color: isMe ? Colors.black.withOpacity(0.5) : Colors.grey[600],
+                color: isMe ? Colors.black.withOpacity(0.5) : ThemeColors.secondaryText(context),
                 fontSize: 10,
               ),
             ),

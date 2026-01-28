@@ -4,6 +4,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:oolale_mobile/models/portfolio_media.dart';
 import 'package:oolale_mobile/config/constants.dart';
+import '../../config/theme_colors.dart';
 import 'upload_media_screen.dart';
 import 'media_detail_screen.dart';
 
@@ -30,19 +31,27 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   Future<void> _loadMedia() async {
     try {
       setState(() => _isLoading = true);
+      
+      debugPrint('🔄 Cargando media para usuario: ${widget.userId}');
+      
       final response = await _supabase
           .from('portfolio_media')
           .select()
           .eq('profile_id', widget.userId)
           .order('created_at', ascending: false);
 
+      debugPrint('📦 Media cargada: ${response.length} archivos');
+      
       if (mounted) {
         setState(() {
           _mediaList = List<PortfolioMedia>.from(response.map((x) => PortfolioMedia.fromJson(x)));
           _isLoading = false;
         });
+        
+        debugPrint('✅ Lista actualizada con ${_mediaList.length} archivos');
       }
     } catch (e) {
+      debugPrint('❌ Error cargando media: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -58,15 +67,15 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     final isMe = widget.userId == myId;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: AppConstants.bgDarkPanel,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(isMe ? 'Mi Galería' : 'Galería', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text(isMe ? 'Mi Galería' : 'Galería', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold)),
         actions: [
           if (isMe)
             IconButton(
@@ -88,7 +97,11 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                 ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
                 : _filteredMedia.isEmpty
                     ? _buildEmptyState()
-                    : _buildGrid(),
+                    : RefreshIndicator(
+                        onRefresh: _loadMedia,
+                        color: AppConstants.primaryColor,
+                        child: _buildGrid(),
+                      ),
           ),
         ],
       ),
@@ -112,13 +125,13 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
               decoration: BoxDecoration(
                 color: isSelected ? AppConstants.primaryColor : Colors.transparent,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: isSelected ? AppConstants.primaryColor : Colors.grey[800]!),
+                border: Border.all(color: isSelected ? AppConstants.primaryColor : ThemeColors.divider(context)),
               ),
               child: Center(
                 child: Text(
                   filter.toUpperCase(),
                   style: GoogleFonts.outfit(
-                    color: isSelected ? Colors.black : Colors.grey[400],
+                    color: isSelected ? Colors.black : ThemeColors.secondaryText(context),
                     fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
@@ -147,9 +160,9 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           ),
           child: Container(
             decoration: BoxDecoration(
-              color: AppConstants.bgDarkPanel,
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.05)),
+              border: Border.all(color: ThemeColors.divider(context)),
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
@@ -161,7 +174,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                     child: media.tipo == 'imagen' 
                         ? Image.network(media.url, fit: BoxFit.cover)
                         : Container(
-                            color: const Color(0xFF1E1E1E),
+                            color: Theme.of(context).cardColor,
                             child: Icon(
                               media.tipo == 'video' ? Icons.play_circle_outline : Icons.music_note,
                               color: AppConstants.primaryColor,
@@ -173,7 +186,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                     padding: const EdgeInsets.all(12),
                     child: Text(
                       media.titulo,
-                      style: GoogleFonts.outfit(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
+                      style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 14, fontWeight: FontWeight.bold),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -192,9 +205,9 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.collections_outlined, size: 60, color: Colors.grey[800]),
+          Icon(Icons.collections_outlined, size: 60, color: ThemeColors.disabledText(context)),
           const SizedBox(height: 16),
-          Text('Sin archivos', style: GoogleFonts.outfit(color: Colors.grey[700])),
+          Text('Sin archivos', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
         ],
       ),
     );

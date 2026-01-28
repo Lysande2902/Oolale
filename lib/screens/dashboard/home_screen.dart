@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import '../../models/post.dart';
 import 'package:intl/intl.dart';
 import '../events/events_screen.dart';
@@ -116,7 +117,7 @@ class _NavBarIcon extends StatelessWidget {
     if (index == 2) return const SizedBox.shrink();
     final isSelected = index == currentIndex;
     return IconButton(
-      icon: Icon(icon, color: isSelected ? AppConstants.primaryColor : Colors.grey[700]),
+      icon: Icon(icon, color: isSelected ? AppConstants.primaryColor : ThemeColors.iconSecondary(context)),
       onPressed: () => onTap(index),
     );
   }
@@ -143,16 +144,59 @@ class _StreamViewState extends State<_StreamView> {
   
   // Rotación
   Timer? _featuredGigTimer;
+  Timer? _postsRefreshTimer;
   int _currentFeaturedIndex = 0;
 
   List<dynamic> _urgentGigs = [];
   List<dynamic> _headliners = [];
   bool _showHeadliner = false; // Toggle to show headliner vs gig
 
+  @override
+  void initState() {
+    super.initState();
+    _loadStreamData();
+    _startPostsAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    _featuredGigTimer?.cancel();
+    _postsRefreshTimer?.cancel();
+    _postSubscription?.cancel();
+    _postController.dispose();
+    super.dispose();
+  }
+
+  void _startPostsAutoRefresh() {
+    _postsRefreshTimer?.cancel();
+    _postsRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (mounted) {
+        _loadPosts();
+      }
+    });
+  }
+
+  Future<void> _loadPosts() async {
+    try {
+      final postsData = await _supabase
+          .from('posts')
+          .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, avatar_url)')
+          .order('created_at', ascending: false)
+          .limit(10);
+
+      if (mounted) {
+        setState(() {
+          _posts = (postsData as List).map((p) => Post.fromJson(p)).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando posts: $e');
+    }
+  }
+
   Future<void> _loadStreamData() async {
     final userId = _supabase.auth.currentUser?.id;
     try {
-      // 1. Cargar perfil propio
       // 1. Cargar perfil propio
       if (userId != null) {
         debugPrint('HOME: Cargando perfil para $userId');
@@ -165,6 +209,9 @@ class _StreamViewState extends State<_StreamView> {
             // Fallback robusto
             if (_artisticName == null || _artisticName!.trim().isEmpty) {
                _artisticName = profile['nombre_completo'];
+            }
+            if (_artisticName == null || _artisticName!.trim().isEmpty) {
+               _artisticName = 'Artista';
             }
             _profileAvatar = profile['avatar_url'];
           });
@@ -184,7 +231,7 @@ class _StreamViewState extends State<_StreamView> {
       // 3. Headliners (Artistas Destacados)
       final headlinersResponse = await _supabase.from('profiles')
           .select()
-          .eq('estatus_headliner', true)
+          .eq('verificado', true)
           .limit(10);
 
       // 4. Últimos Posts
@@ -312,10 +359,14 @@ class _StreamViewState extends State<_StreamView> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Hola,', style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14)),
+                        Text('Hola,', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 14)),
                         Text(
-                          (_artisticName ?? user?.name ?? 'ARTISTA').toUpperCase(),
-                          style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold),
+                          (_artisticName ?? 'ARTISTA').toUpperCase(),
+                          style: GoogleFonts.outfit(
+                            fontSize: 28, 
+                            fontWeight: FontWeight.bold,
+                            color: ThemeColors.primaryText(context),
+                          ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -368,8 +419,8 @@ class _StreamViewState extends State<_StreamView> {
                             backgroundImage: _profileAvatar != null ? NetworkImage(_profileAvatar!) : null,
                             child: _profileAvatar == null 
                               ? Text(
-                                  (_artisticName ?? user?.name ?? 'A').substring(0, 1).toUpperCase(),
-                                  style: GoogleFonts.outfit(color: Theme.of(context).textTheme.bodyLarge?.color, fontWeight: FontWeight.bold),
+                                  (_artisticName ?? 'A').substring(0, 1).toUpperCase(),
+                                  style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold),
                                 )
                               : null,
                           ),
@@ -402,57 +453,96 @@ class _StreamViewState extends State<_StreamView> {
 
                   if (featuredItem == null) {
                     return Container(
-                      height: 120,
+                      height: 180,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
                         color: Theme.of(context).cardColor,
                         borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+                        border: Border.all(color: ThemeColors.divider(context)),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(Icons.event_outlined, color: Colors.grey[800], size: 40),
-                          const SizedBox(height: 10),
-                          Text('No hay eventos destacados', style: GoogleFonts.outfit(color: Colors.grey[700])),
+                          Icon(Icons.event_outlined, color: ThemeColors.iconSecondary(context), size: 48),
+                          const SizedBox(height: 12),
+                          Text(
+                            'No hay eventos destacados',
+                            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 15),
+                          ),
                         ],
                       ),
                     );
                   }
 
                   return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(isGig ? 'Evento Urgente' : 'Artista Destacado', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
-                          // Indicador simple
+                          Row(
+                            children: [
+                              Icon(
+                                isGig ? Icons.event_available : Icons.star,
+                                color: AppConstants.primaryColor,
+                                size: 24,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                isGig ? 'Evento Destacado' : 'Artista VIP',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: ThemeColors.primaryText(context),
+                                ),
+                              ),
+                            ],
+                          ),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                                color: AppConstants.timeAgoColor.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(4)
+                              color: isGig 
+                                ? AppConstants.primaryColor.withOpacity(0.2)
+                                : Colors.purpleAccent.withOpacity(0.2),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
+                                width: 1,
+                              ),
                             ),
-                            child: Text(isGig ? 'HOY/MAÑANA' : 'VIP', 
-                              style: GoogleFonts.outfit(color: AppConstants.timeAgoColor, fontSize: 10, fontWeight: FontWeight.bold)),
+                            child: Text(
+                              isGig ? 'PRÓXIMO' : 'HEADLINER',
+                              style: GoogleFonts.outfit(
+                                color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
                           ),
                         ],
                       ),
                       const SizedBox(height: 15),
                       GestureDetector(
                         onTap: () {
-                           if (isGig) {
-                             context.push('/gig/${featuredItem['id']}');
-                           } else {
-                             context.push('/portfolio/${featuredItem['id']}');
-                           }
+                          if (isGig) {
+                            context.push('/gig/${featuredItem['id']}');
+                          } else {
+                            context.push('/portfolio/${featuredItem['id']}');
+                          }
                         },
                         child: Container(
-                          height: 280,
+                          height: 220,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(20),
                             color: Theme.of(context).cardColor,
-                            border: Border.all(color: isGig ? AppConstants.primaryColor.withOpacity(0.3) : Colors.purpleAccent.withOpacity(0.3), width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: (isGig ? AppConstants.primaryColor : Colors.purpleAccent).withOpacity(0.2),
+                                blurRadius: 20,
+                                offset: const Offset(0, 8),
+                              ),
+                            ],
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(20),
@@ -460,11 +550,21 @@ class _StreamViewState extends State<_StreamView> {
                               children: [
                                 // Background Image
                                 if (!isGig && featuredItem['banner_url'] != null)
-                                   Image.network(featuredItem['banner_url'], width: double.infinity, height: double.infinity, fit: BoxFit.cover),
+                                  Image.network(
+                                    featuredItem['banner_url'],
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
                                 if (isGig && featuredItem['flyer_url'] != null)
-                                   Image.network(featuredItem['flyer_url'], width: double.infinity, height: double.infinity, fit: BoxFit.cover),
-                                
-                                // Overlay Gradient
+                                  Image.network(
+                                    featuredItem['flyer_url'],
+                                    width: double.infinity,
+                                    height: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
+
+                                // Gradient Overlay
                                 Container(
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
@@ -472,47 +572,98 @@ class _StreamViewState extends State<_StreamView> {
                                       end: Alignment.bottomCenter,
                                       colors: [
                                         Colors.transparent,
-                                        Colors.black.withOpacity(0.8),
-                                        Colors.black,
+                                        Colors.black.withOpacity(0.7),
+                                        Colors.black.withOpacity(0.95),
                                       ],
-                                      stops: const [0.0, 0.6, 1.0],
+                                      stops: const [0.0, 0.5, 1.0],
                                     ),
                                   ),
                                 ),
 
+                                // Content
                                 Padding(
                                   padding: const EdgeInsets.all(20),
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.end,
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
-                                          borderRadius: BorderRadius.circular(6),
+                                      // Title
+                                      Text(
+                                        isGig
+                                            ? (featuredItem['titulo_bolo'] ?? 'Evento')
+                                            : (featuredItem['nombre_artistico'] ?? 'Artista'),
+                                        style: GoogleFonts.outfit(
+                                          color: Colors.white,
+                                          fontSize: 22,
+                                          fontWeight: FontWeight.bold,
+                                          height: 1.2,
                                         ),
-                                        child: Text(isGig ? 'PRÓXIMO' : 'HEADLINER', style: GoogleFonts.outfit(color: Colors.black, fontSize: 10, fontWeight: FontWeight.bold)),
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 12),
-                                      Text(
-                                        isGig ? (featuredItem['titulo_bolo'] ?? 'Evento') : (featuredItem['nombre_artistico'] ?? 'Artista'),
-                                        style: GoogleFonts.outfit(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                                        maxLines: 2,
-                                      ),
-                                      const SizedBox(height: 8),
+                                      // Location/Role
                                       Row(
                                         children: [
-                                          Icon(isGig ? Icons.location_on_outlined : Icons.music_note, color: isGig ? AppConstants.primaryColor : Colors.purpleAccent, size: 16),
-                                          const SizedBox(width: 6),
+                                          Container(
+                                            padding: const EdgeInsets.all(6),
+                                            decoration: BoxDecoration(
+                                              color: (isGig ? AppConstants.primaryColor : Colors.purpleAccent).withOpacity(0.2),
+                                              borderRadius: BorderRadius.circular(8),
+                                            ),
+                                            child: Icon(
+                                              isGig ? Icons.location_on : Icons.music_note,
+                                              color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
+                                              size: 16,
+                                            ),
+                                          ),
+                                          const SizedBox(width: 10),
                                           Expanded(
                                             child: Text(
-                                              isGig ? (featuredItem['lugar_nombre'] ?? 'Ubicación') : (featuredItem['rol_principal'] ?? 'Músico'),
-                                              style: GoogleFonts.outfit(color: Colors.grey[400], fontSize: 14),
+                                              isGig
+                                                  ? (featuredItem['lugar_nombre'] ?? 'Ubicación')
+                                                  : (featuredItem['rol_principal'] ?? 'Músico'),
+                                              style: GoogleFonts.outfit(
+                                                color: Colors.white.withOpacity(0.9),
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
                                         ],
                                       ),
+                                      if (isGig && featuredItem['fecha_gig'] != null) ...[
+                                        const SizedBox(height: 8),
+                                        Row(
+                                          children: [
+                                            Container(
+                                              padding: const EdgeInsets.all(6),
+                                              decoration: BoxDecoration(
+                                                color: AppConstants.primaryColor.withOpacity(0.2),
+                                                borderRadius: BorderRadius.circular(8),
+                                              ),
+                                              child: Icon(
+                                                Icons.calendar_today,
+                                                color: AppConstants.primaryColor,
+                                                size: 16,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 10),
+                                            Text(
+                                              DateFormat('dd MMM yyyy').format(
+                                                DateTime.parse(featuredItem['fecha_gig']),
+                                              ),
+                                              style: GoogleFonts.outfit(
+                                                color: Colors.white.withOpacity(0.9),
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.w500,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -523,7 +674,7 @@ class _StreamViewState extends State<_StreamView> {
                       ),
                     ],
                   );
-                }
+                },
               ),
 
               const SizedBox(height: 30),
@@ -558,14 +709,14 @@ class _StreamViewState extends State<_StreamView> {
                   style: GoogleFonts.outfit(fontSize: 15),
                   decoration: InputDecoration(
                     hintText: '¿Qué estás tocando hoy?',
-                    hintStyle: GoogleFonts.outfit(color: Colors.grey[700]),
+                    hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context)),
                     border: InputBorder.none,
                   ),
                 ),
               ),
             ],
           ),
-          const Divider(height: 20, color: Colors.white10),
+          Divider(height: 20, color: ThemeColors.divider(context)),
           Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
@@ -593,7 +744,14 @@ class _StreamViewState extends State<_StreamView> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text('Muro de Artistas', style: GoogleFonts.outfit(fontSize: 20, fontWeight: FontWeight.bold)),
+        Text(
+          'Muro de Artistas', 
+          style: GoogleFonts.outfit(
+            fontSize: 20, 
+            fontWeight: FontWeight.bold,
+            color: ThemeColors.primaryText(context),
+          )
+        ),
         Icon(Icons.auto_awesome, color: AppConstants.primaryColor, size: 18),
       ],
     );
@@ -606,9 +764,9 @@ class _StreamViewState extends State<_StreamView> {
           padding: const EdgeInsets.symmetric(vertical: 40),
           child: Column(
             children: [
-              Icon(Icons.feed_outlined, color: Colors.grey[800], size: 40),
+              Icon(Icons.feed_outlined, color: ThemeColors.iconSecondary(context), size: 40),
               const SizedBox(height: 10),
-              Text('Aún no hay publicaciones.', style: GoogleFonts.outfit(color: Colors.grey[700])),
+              Text('Aún no hay publicaciones.', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
             ],
           ),
         ),
@@ -633,7 +791,7 @@ class _PostCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        border: Border.all(color: ThemeColors.divider(context)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -660,10 +818,10 @@ class _PostCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(post.authorName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15)),
+                    Text(post.authorName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 15, color: ThemeColors.primaryText(context))),
                     Text(
                       DateFormat('dd MMM, HH:mm').format(post.createdAt),
-                      style: GoogleFonts.outfit(color: Colors.grey[700], fontSize: 11),
+                      style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 11),
                     ),
                   ],
                 ),
@@ -674,7 +832,11 @@ class _PostCard extends StatelessWidget {
           const SizedBox(height: 12),
           Text(
             post.content,
-            style: GoogleFonts.outfit(fontSize: 14, height: 1.4, color: Theme.of(context).textTheme.bodyLarge?.color?.withOpacity(0.8)),
+            style: GoogleFonts.outfit(
+              fontSize: 14, 
+              height: 1.4, 
+              color: ThemeColors.primaryText(context).withOpacity(0.9),
+            ),
           ),
         ],
       ),

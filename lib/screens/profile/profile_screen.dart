@@ -7,6 +7,7 @@ import 'package:animate_do/animate_do.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import 'edit_profile_screen.dart';
 import 'public_profile_screen.dart';
 import 'profile_detail_lists.dart';
@@ -145,6 +146,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 10),
                   _buildBioCard(),
                   const SizedBox(height: 30),
+                  _buildPortfolioButton(),
+                  const SizedBox(height: 30),
                   _buildSectionTitle('Mi Equipo'),
                   const SizedBox(height: 10),
                   _buildGearSection(),
@@ -178,21 +181,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Positioned(
               top: 10,
               right: 10,
-              child: Row(
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-                    onPressed: () => context.push('/settings'),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.share_outlined, color: Colors.white70),
-                    onPressed: _shareProfile,
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.logout_rounded, color: Colors.white70),
-                    onPressed: () => _showLogoutDialog(context),
-                  ),
-                ],
+              child: IconButton(
+                icon: const Icon(Icons.settings_outlined, color: Colors.white70),
+                onPressed: () => context.push('/settings'),
               ),
             ),
             // Profile content
@@ -214,7 +205,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ? NetworkImage(_profileData!['avatar_url']) 
                             : null,
                         child: _profileData?['avatar_url'] == null
-                            ? Icon(Icons.person, size: 60, color: Colors.grey[700])
+                            ? Icon(Icons.person, size: 60, color: ThemeColors.iconSecondary(context))
                             : null,
                       ),
                     ),
@@ -272,12 +263,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _eventosCount.toString(), 'Eventos',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: _profileData!['id']))),
         ),
-        Container(width: 1, height: 40, color: Theme.of(context).dividerColor.withOpacity(0.1)),
+        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
         _buildStat(
           _seguidoresCount.toString(), 'Seguidores',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: _profileData!['id']))),
         ),
-        Container(width: 1, height: 40, color: Theme.of(context).dividerColor.withOpacity(0.1)),
+        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
         _buildStat(
           _musicCount.toString(), 'Música', // Que es perfil_gear en realidad
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: _profileData!['id']))),
@@ -304,7 +295,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Text(
               label,
               style: GoogleFonts.outfit(
-                color: Colors.grey[600],
+                color: ThemeColors.hintText(context),
                 fontSize: 12,
               ),
             ),
@@ -341,7 +332,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+            border: Border.all(color: ThemeColors.divider(context)),
           ),
           child: IconButton(
             onPressed: () {
@@ -353,7 +344,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 );
               }
             },
-            icon: const Icon(Icons.remove_red_eye_outlined, color: Colors.white),
+            icon: Icon(Icons.remove_red_eye_outlined, color: ThemeColors.icon(context)),
             tooltip: 'Ver mi perfil público',
           ),
         ),
@@ -362,11 +353,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+            border: Border.all(color: ThemeColors.divider(context)),
           ),
           child: IconButton(
-            onPressed: () {},
-            icon: const Icon(Icons.share_outlined, color: Colors.white),
+            onPressed: _shareProfile,
+            icon: Icon(Icons.share_outlined, color: ThemeColors.icon(context)),
+            tooltip: 'Compartir perfil',
           ),
         ),
       ],
@@ -377,7 +369,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Text(
       title,
       style: GoogleFonts.outfit(
-        color: Theme.of(context).textTheme.titleLarge?.color,
+        color: ThemeColors.primaryText(context),
         fontSize: 20,
         fontWeight: FontWeight.bold,
       ),
@@ -391,12 +383,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        border: Border.all(color: ThemeColors.divider(context)),
       ),
       child: Text(
         _profileData?['bio_rider'] ?? 'Sin biografía. Cuéntale al mundo quién eres.',
         style: GoogleFonts.outfit(
-          color: Colors.grey[400],
+          color: ThemeColors.secondaryText(context),
           fontSize: 15,
           height: 1.6,
         ),
@@ -411,12 +403,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+          border: Border.all(color: ThemeColors.divider(context)),
         ),
         child: Center(
           child: Text(
             'No has agregado equipo aún',
-            style: GoogleFonts.outfit(color: Colors.grey[700]),
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
           ),
         ),
       );
@@ -436,12 +428,81 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Text(
             i['gear_catalog']['nombre'],
             style: GoogleFonts.outfit(
-              color: Theme.of(context).textTheme.bodyMedium?.color,
+              color: ThemeColors.primaryText(context),
               fontSize: 13,
             ),
           ),
         );
       }).toList(),
+    );
+  }
+
+  Widget _buildPortfolioButton() {
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId == null) return const SizedBox.shrink();
+
+    return GestureDetector(
+      onTap: () => context.push('/portfolio/$myId'),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              AppConstants.primaryColor.withOpacity(0.2),
+              AppConstants.primaryColor.withOpacity(0.05),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppConstants.primaryColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(
+                Icons.photo_library_outlined,
+                color: AppConstants.primaryColor,
+                size: 28,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Mi Galería',
+                    style: GoogleFonts.outfit(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: ThemeColors.primaryText(context),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Sube imágenes, videos y audios',
+                    style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      color: ThemeColors.secondaryText(context),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(
+              Icons.arrow_forward_ios,
+              color: AppConstants.primaryColor,
+              size: 18,
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

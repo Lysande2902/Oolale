@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import 'package:share_plus/share_plus.dart';
 import '../portfolio/portfolio_screen.dart';
 import '../messages/chat_screen.dart';
@@ -18,8 +19,10 @@ class PublicProfileScreen extends StatefulWidget {
 class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final _supabase = Supabase.instance.client;
   Map<String, dynamic>? _profile;
+  List<dynamic> _instrumentos = [];
   int _eventosCount = 0;
   int _seguidoresCount = 0;
+  int _musicCount = 0;
   bool _isLoading = true;
 
   @override
@@ -36,6 +39,11 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           .eq('id', widget.userId)
           .single();
 
+      final gear = await _supabase
+          .from('perfil_gear')
+          .select('gear_catalog(nombre)')
+          .eq('perfil_id', widget.userId);
+
       // Cargar contadores
       final eventosData = await _supabase
           .from('gig_lineup')
@@ -47,15 +55,23 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           .select()
           .eq('target_id', widget.userId);
 
+      final musicData = await _supabase
+          .from('perfil_gear')
+          .select()
+          .eq('perfil_id', widget.userId);
+
       if (mounted) {
         setState(() {
           _profile = data;
+          _instrumentos = gear;
           _eventosCount = (eventosData as List).length;
           _seguidoresCount = (seguidoresData as List).length;
+          _musicCount = (musicData as List).length;
           _isLoading = false;
         });
       }
     } catch (e) {
+      debugPrint('Error cargando perfil público: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -77,8 +93,8 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (_profile == null) {
       return Scaffold(
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-        appBar: AppBar(backgroundColor: Colors.transparent, iconTheme: Theme.of(context).iconTheme),
-        body: const Center(child: Text('Usuario no encontrado', style: TextStyle(color: Colors.grey))),
+        appBar: AppBar(backgroundColor: Colors.transparent, iconTheme: IconThemeData(color: ThemeColors.icon(context))),
+        body: Center(child: Text('Usuario no encontrado', style: TextStyle(color: ThemeColors.secondaryText(context)))),
       );
     }
 
@@ -98,10 +114,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   _buildActionButtons(),
                   const SizedBox(height: 30),
                   _buildSectionTitle('Bio'),
+                  const SizedBox(height: 10),
                   _buildBioCard(),
                   const SizedBox(height: 30),
-                  _buildSectionTitle('Instrumento'),
-                  _buildBadge(_profile!['instrumento_principal'] ?? 'No especificado'),
+                  _buildSectionTitle('Mi Equipo'),
+                  const SizedBox(height: 10),
+                  _buildGearSection(),
                   const SizedBox(height: 100),
                 ],
               ),
@@ -128,19 +146,9 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             Positioned(
               top: 10,
               left: 10,
-              right: 10,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.share, color: Colors.white),
-                    onPressed: _shareProfile,
-                  ),
-                ],
+              child: IconButton(
+                icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
+                onPressed: () => Navigator.pop(context),
               ),
             ),
             Center(
@@ -162,12 +170,39 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                     ),
                   ),
                   const SizedBox(height: 20),
-                  Text(
-                    _profile!['nombre_artistico'] ?? 'Artista',
-                    style: GoogleFonts.outfit(fontSize: 28, fontWeight: FontWeight.bold),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        _profile!['nombre_artistico'] ?? 'Artista',
+                        style: GoogleFonts.outfit(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (_profile!['verificado'] == true) ...[
+                        const SizedBox(width: 8),
+                        const Icon(Icons.verified, color: AppConstants.primaryColor, size: 24),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 8),
-                  _buildBadge((_profile!['rol_principal'] ?? 'musico').toString().toUpperCase()),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: AppConstants.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
+                    ),
+                    child: Text(
+                      (_profile!['rol_principal'] ?? 'musico').toString().toUpperCase(),
+                      style: GoogleFonts.outfit(
+                        color: AppConstants.primaryColor,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -185,14 +220,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           _eventosCount.toString(), 'Eventos',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: widget.userId))),
         ),
-        Container(width: 1, height: 40, color: Colors.grey[900]),
+        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
         _buildStat(
           _seguidoresCount.toString(), 'Seguidores',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: widget.userId))),
         ),
-        Container(width: 1, height: 40, color: Colors.grey[900]),
+        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
         _buildStat(
-          '0', 'Música', // Que es perfil_gear en realidad
+          _musicCount.toString(), 'Música',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: widget.userId))),
         ),
       ],
@@ -208,7 +243,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         child: Column(
           children: [
             Text(value, style: GoogleFonts.outfit(fontSize: 24, fontWeight: FontWeight.bold)),
-            Text(label, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 12)),
+            Text(label, style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
           ],
         ),
       ),
@@ -283,7 +318,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(title, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.bold)),
+      child: Text(
+        title,
+        style: GoogleFonts.outfit(
+          color: ThemeColors.primaryText(context),
+          fontSize: 20,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 
@@ -298,8 +340,49 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       ),
       child: Text(
         _profile!['bio_rider'] ?? 'Sin biografía.',
-        style: GoogleFonts.outfit(color: Colors.grey[400], fontSize: 15, height: 1.6),
+        style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 15, height: 1.6),
       ),
+    );
+  }
+
+  Widget _buildGearSection() {
+    if (_instrumentos.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        ),
+        child: Center(
+          child: Text(
+            'No ha agregado equipo',
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+          ),
+        ),
+      );
+    }
+
+    return Wrap(
+      spacing: 10,
+      runSpacing: 10,
+      children: _instrumentos.map((i) {
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
+          ),
+          child: Text(
+            i['gear_catalog']['nombre'],
+            style: GoogleFonts.outfit(
+              color: ThemeColors.primaryText(context),
+              fontSize: 13,
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 

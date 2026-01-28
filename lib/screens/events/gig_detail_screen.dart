@@ -5,7 +5,9 @@ import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import '../../models/event.dart';
+import '../../services/notification_service.dart';
 
 class GigDetailScreen extends StatefulWidget {
   final int gigId;
@@ -78,6 +80,9 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
     final myId = _supabase.auth.currentUser?.id;
     if (myId == null) return;
 
+    // Capture ScaffoldMessenger before async operations
+    final messenger = ScaffoldMessenger.of(context);
+
     setState(() => _isPostulating = true);
     try {
       await _supabase.from('gig_lineup').insert({
@@ -87,27 +92,25 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
         'asistencia_confirmada': false,
       });
 
-        // Notificar al organizador
-        if (_gig?.organizadorId != null) {
-          await _supabase.from('notifications').insert({
-            'user_id': _gig!.organizadorId,
-            'tipo': 'gig_postulation',
-            'titulo': 'Nuevo interesado',
-            'mensaje': 'Alguien quiere unirse a "${_gig!.titulo}"',
-            'leido': false,
-            'data': {'gig_id': widget.gigId, 'sender_id': myId},
-          });
-        }
+      // Notificar al organizador
+      if (_gig?.organizadorId != null) {
+        await NotificationService.createGigPostulationNotification(
+          organizerId: _gig!.organizadorId!,
+          gigId: widget.gigId,
+          gigTitle: _gig!.titulo,
+          senderId: myId,
+        );
+      }
 
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Interés enviado correctamente'), backgroundColor: AppConstants.primaryColor),
-          );
-          _loadGigDetails();
-        }
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Interés enviado correctamente'), backgroundColor: AppConstants.primaryColor),
+        );
+        _loadGigDetails();
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           const SnackBar(content: Text('Error al enviar interés'), backgroundColor: AppConstants.errorColor),
         );
       }
@@ -124,19 +127,19 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Scaffold(
-        backgroundColor: Colors.black,
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         body: Center(child: CircularProgressIndicator(color: AppConstants.primaryColor)),
       );
     }
 
     if (_gig == null) {
       return Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         appBar: AppBar(
           backgroundColor: Colors.transparent,
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
             onPressed: () => Navigator.pop(context),
           ),
         ),
@@ -144,9 +147,9 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.not_interested, color: Colors.grey, size: 64),
+              Icon(Icons.not_interested, color: ThemeColors.disabledText(context), size: 64),
               const SizedBox(height: 16),
-              const Text('Evento no encontrado', style: TextStyle(color: Colors.grey, fontSize: 16)),
+              Text('Evento no encontrado', style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 16)),
             ],
           ),
         ),
@@ -176,11 +179,11 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
         mainAxisAlignment: MainAxisAlignment.spaceBetween, // Separar botones
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
             onPressed: () => Navigator.pop(context),
           ),
           IconButton(
-            icon: const Icon(Icons.share, color: Colors.white),
+            icon: Icon(Icons.share, color: ThemeColors.icon(context)),
             onPressed: _shareGig,
           ),
         ],
@@ -238,7 +241,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
                 _buildSectionTitle('Detalles'),
                 Text(
                   _gig!.descripcion,
-                  style: GoogleFonts.outfit(color: Colors.grey[400], height: 1.6, fontSize: 16),
+                  style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), height: 1.6, fontSize: 16),
                 ),
                 const SizedBox(height: 30),
                 _buildSectionTitle('Categoría'),
@@ -247,7 +250,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
                 // Requisitos técnicos si existen
                 if (_gig!.tipo == 'concierto' || _gig!.tipo == 'ensayo') ...[
                   _buildSectionTitle('Requisitos'),
-                  Text('Contacto con el organizador para más detalles.', style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 14)),
+                  Text('Contacto con el organizador para más detalles.', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 14)),
                   const SizedBox(height: 30),
                 ],
                 _buildLineupSection(),
@@ -266,7 +269,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
       children: [
         Text(
           _gig!.titulo,
-          style: GoogleFonts.outfit(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, height: 1.1),
+          style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 32, fontWeight: FontWeight.bold, height: 1.1),
         ),
         const SizedBox(height: 15),
         Row(
@@ -284,7 +287,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
             Expanded(
               child: Text(
                 _gig!.ubicacion,
-                style: GoogleFonts.outfit(color: Colors.grey[500], fontSize: 16),
+                style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 16),
               ),
             ),
           ],
@@ -297,15 +300,15 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: AppConstants.bgDarkPanel,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: ThemeColors.divider(context)),
       ),
       child: Row(
         children: [
           Icon(icon, color: AppConstants.primaryColor, size: 14),
           const SizedBox(width: 8),
-          Text(label, style: GoogleFonts.outfit(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w600)),
+          Text(label, style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 12, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -317,9 +320,9 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppConstants.bgDarkPanel,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.05)),
+          border: Border.all(color: ThemeColors.divider(context)),
         ),
         child: Row(
           children: [
@@ -335,10 +338,10 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Organizado por', style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 11)),
+                  Text('Organizado por', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 11)),
                   Text(
                     _organizer?['nombre_artistico'] ?? 'Artista',
-                    style: GoogleFonts.outfit(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                    style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ],
               ),
@@ -389,7 +392,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(
         title,
-        style: GoogleFonts.outfit(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+        style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 18, fontWeight: FontWeight.bold),
       ),
     );
   }

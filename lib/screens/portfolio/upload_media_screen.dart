@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import '../../services/storage_service.dart';
 
 class UploadMediaScreen extends StatefulWidget {
@@ -56,30 +57,71 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
   }
 
   Future<void> _upload() async {
-    if (_selectedFile == null || _titleController.text.isEmpty) return;
+    if (_selectedFile == null || _titleController.text.isEmpty) {
+      final messenger = ScaffoldMessenger.of(context);
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Por favor selecciona un archivo y agrega un título')),
+      );
+      return;
+    }
+
+    // Capturar referencias antes de operaciones async
+    final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
 
     setState(() => _isUploading = true);
 
     try {
+      debugPrint('Subiendo archivo: ${_selectedFile!.path}');
+      debugPrint('Tipo: $_selectedType');
+      debugPrint('Usuario: ${widget.userId}');
+      
       final publicUrl = await StorageService.uploadPortfolio(widget.userId, _selectedFile!);
       
-      if (publicUrl == null) throw Exception('No se pudo obtener la URL del archivo');
+      if (publicUrl == null) {
+        throw Exception('No se pudo obtener la URL del archivo');
+      }
+
+      debugPrint('URL obtenida: $publicUrl');
 
       await _supabase.from('portfolio_media').insert({
         'profile_id': widget.userId,
         'tipo': _selectedType,
         'titulo': _titleController.text.trim(),
-        'url': publicUrl,
+        'url_recurso': publicUrl,
         'visibilidad': 'publico',
       });
 
+      debugPrint('✅ Insert exitoso en base de datos');
+
       if (mounted) {
-        widget.onUploadComplete();
-        Navigator.pop(context);
+        // Primero cerrar la pantalla
+        navigator.pop();
+        
+        // Luego refrescar la galería
+        Future.delayed(const Duration(milliseconds: 200), () {
+          widget.onUploadComplete();
+          
+          // Mostrar SnackBar
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Archivo subido exitosamente'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        });
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('❌ Error completo al subir: $e');
+      debugPrint('Stack trace: $stackTrace');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Error al subir archivo')));
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isUploading = false);
@@ -89,15 +131,15 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        backgroundColor: Colors.black,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Colors.white),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text('Subir Archivo', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Subir Archivo', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold)),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
@@ -123,7 +165,7 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(title, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.bold)),
+      child: Text(title, style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 13, fontWeight: FontWeight.bold)),
     );
   }
 
@@ -138,17 +180,17 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
               margin: const EdgeInsets.symmetric(horizontal: 4),
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: isSelected ? AppConstants.primaryColor : AppConstants.bgDarkPanel,
+                color: isSelected ? AppConstants.primaryColor : Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
                 children: [
                   Icon(
                     type == 'imagen' ? Icons.image : type == 'video' ? Icons.videocam : Icons.music_note,
-                    color: isSelected ? Colors.black : Colors.grey[600],
+                    color: isSelected ? Colors.black : ThemeColors.secondaryText(context),
                   ),
                   const SizedBox(height: 4),
-                  Text(type.toUpperCase(), style: GoogleFonts.outfit(color: isSelected ? Colors.black : Colors.grey[600], fontSize: 10, fontWeight: FontWeight.bold)),
+                  Text(type.toUpperCase(), style: GoogleFonts.outfit(color: isSelected ? Colors.black : ThemeColors.secondaryText(context), fontSize: 10, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
@@ -165,7 +207,7 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
         width: double.infinity,
         padding: const EdgeInsets.all(30),
         decoration: BoxDecoration(
-          color: AppConstants.bgDarkPanel,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppConstants.primaryColor.withOpacity(0.1), style: BorderStyle.solid),
         ),
@@ -174,11 +216,11 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
             if (_selectedFile == null) ...[
               Icon(Icons.cloud_upload_outlined, color: AppConstants.primaryColor, size: 40),
               const SizedBox(height: 12),
-              Text('Toca para seleccionar', style: GoogleFonts.outfit(color: Colors.grey[600])),
+              Text('Toca para seleccionar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
             ] else ...[
               const Icon(Icons.check_circle, color: AppConstants.primaryColor, size: 40),
               const SizedBox(height: 12),
-              Text(_selectedFile!.path.split('/').last, style: GoogleFonts.outfit(color: Colors.white), textAlign: TextAlign.center),
+              Text(_selectedFile!.path.split('/').last, style: GoogleFonts.outfit(color: ThemeColors.primaryText(context)), textAlign: TextAlign.center),
             ],
           ],
         ),
@@ -190,15 +232,15 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: AppConstants.bgDarkPanel,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: TextField(
         controller: _titleController,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: ThemeColors.primaryText(context)),
         decoration: InputDecoration(
           hintText: 'Nombre del archivo',
-          hintStyle: GoogleFonts.outfit(color: Colors.grey[800]),
+          hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context)),
           border: InputBorder.none,
         ),
       ),

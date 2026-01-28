@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 
@@ -17,11 +18,7 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _supabase = Supabase.instance.client;
   
-  bool _notificationsEnabled = true;
-  bool _emailNotifications = true;
-  bool _pushNotifications = true;
   bool _openToWork = false;
-  bool _profilePublic = true;
   bool _isLoading = true;
 
   @override
@@ -57,6 +54,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
 
+    final messenger = ScaffoldMessenger.of(context);
+
     try {
       await _supabase
           .from('profiles')
@@ -66,7 +65,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _openToWork = value);
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text(value ? 'Ahora estás disponible para trabajos' : 'Ya no apareces como disponible'),
             backgroundColor: AppConstants.primaryColor,
@@ -75,6 +74,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       debugPrint('Error updating setting: $e');
+      if (mounted) {
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Error al actualizar configuración'),
+            backgroundColor: AppConstants.errorColor,
+          ),
+        );
+      }
     }
   }
 
@@ -83,12 +90,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppConstants.cardColor,
-        title: const Text('Cerrar Sesión', style: TextStyle(color: Colors.white)),
-        content: const Text('¿Estás seguro que quieres salir?', style: TextStyle(color: Colors.white70)),
+        title: Text('Cerrar Sesión', style: TextStyle(color: ThemeColors.primaryText(context))),
+        content: Text('¿Estás seguro que quieres salir?', style: TextStyle(color: ThemeColors.secondaryText(context))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.white54)),
+            child: Text('Cancelar', style: TextStyle(color: ThemeColors.hintText(context))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
@@ -141,13 +148,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _openToWork,
                   (val) => _updateOpenToWork(val),
                 ),
-                _buildSwitchTile(
-                  'Perfil Público',
-                  'Permite que otros vean tu perfil completo',
-                  Icons.public_rounded,
-                  _profilePublic,
-                  (val) => setState(() => _profilePublic = val),
-                ),
 
                 const SizedBox(height: 30),
                 _buildSection('APARIENCIA'),
@@ -160,30 +160,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
 
                 const SizedBox(height: 30),
-                _buildSection('NOTIFICACIONES'),
-                _buildSwitchTile(
-                  'Notificaciones',
-                  'Recibe alertas de la app',
-                  Icons.notifications_rounded,
-                  _notificationsEnabled,
-                  (val) => setState(() => _notificationsEnabled = val),
-                ),
-                _buildSwitchTile(
-                  'Email',
-                  'Notificaciones por correo',
-                  Icons.email_rounded,
-                  _emailNotifications,
-                  (val) => setState(() => _emailNotifications = val),
-                ),
-                _buildSwitchTile(
-                  'Push',
-                  'Notificaciones push',
-                  Icons.phone_android_rounded,
-                  _pushNotifications,
-                  (val) => setState(() => _pushNotifications = val),
-                ),
-
-                const SizedBox(height: 30),
                 _buildSection('CUENTA'),
                 _buildSettingTile(
                   'Premium',
@@ -191,18 +167,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Icons.star_rounded,
                   color: AppConstants.accentColor,
                   onTap: () => context.push('/premium'),
-                ),
-                _buildSettingTile(
-                  'Privacidad',
-                  'Controla tu información',
-                  Icons.privacy_tip_rounded,
-                  onTap: () {},
-                ),
-                _buildSettingTile(
-                  'Ayuda y Soporte',
-                  'Contacta al equipo',
-                  Icons.help_outline_rounded,
-                  onTap: () {},
                 ),
 
                 const SizedBox(height: 30),
@@ -235,7 +199,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        border: Border.all(color: ThemeColors.divider(context)),
       ),
       child: ListTile(
         onTap: onTap,
@@ -248,8 +212,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Icon(icon, color: color ?? AppConstants.primaryColor, size: 22),
         ),
         title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6), fontSize: 12)),
-        trailing: Icon(Icons.chevron_right_rounded, color: Theme.of(context).dividerColor.withOpacity(0.2)),
+        subtitle: Text(subtitle, style: TextStyle(color: ThemeColors.hintText(context), fontSize: 12)),
+        trailing: Icon(Icons.chevron_right_rounded, color: ThemeColors.divider(context)),
       ),
     );
   }
@@ -260,7 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        border: Border.all(color: ThemeColors.divider(context)),
       ),
       child: SwitchListTile(
         secondary: Container(
@@ -272,7 +236,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Icon(icon, color: AppConstants.primaryColor, size: 22),
         ),
         title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.6), fontSize: 12)),
+        subtitle: Text(subtitle, style: TextStyle(color: ThemeColors.hintText(context), fontSize: 12)),
         value: value,
         onChanged: onChanged,
         activeThumbColor: AppConstants.primaryColor,
@@ -303,12 +267,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         children: [
           Text(
             'Óolale Mobile',
-            style: GoogleFonts.outfit(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.3), fontSize: 12),
+            style: GoogleFonts.outfit(color: ThemeColors.hintText(context).withOpacity(0.5), fontSize: 12),
           ),
           const SizedBox(height: 4),
           Text(
             'Versión 1.0.0 (Beta)',
-            style: GoogleFonts.outfit(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.15), fontSize: 10),
+            style: GoogleFonts.outfit(color: ThemeColors.hintText(context).withOpacity(0.3), fontSize: 10),
           ),
         ],
       ),

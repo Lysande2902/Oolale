@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../config/theme_colors.dart';
 
 /// Pantalla para dejar calificación
 class LeaveRatingScreen extends StatefulWidget {
@@ -76,10 +77,10 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.grey[900],
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Dejar calificación'),
-        backgroundColor: Colors.black87,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -125,8 +126,8 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
             DropdownButton<String>(
               value: selectedInteractionType,
               isExpanded: true,
-              dropdownColor: Colors.grey[850],
-              style: const TextStyle(color: Colors.white),
+              dropdownColor: Theme.of(context).cardColor,
+              style: TextStyle(color: ThemeColors.primaryText(context)),
               onChanged: (newValue) {
                 setState(() => selectedInteractionType = newValue!);
               },
@@ -150,12 +151,12 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
             TextField(
               controller: _commentController,
               maxLines: 4,
-              style: const TextStyle(color: Colors.white),
+              style: TextStyle(color: ThemeColors.primaryText(context)),
               decoration: InputDecoration(
                 hintText: 'Cuéntale más a otros músicos...',
-                hintStyle: TextStyle(color: Colors.grey[600]),
+                hintStyle: TextStyle(color: ThemeColors.hintText(context)),
                 filled: true,
-                fillColor: Colors.grey[850],
+                fillColor: Theme.of(context).cardColor,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
                 ),

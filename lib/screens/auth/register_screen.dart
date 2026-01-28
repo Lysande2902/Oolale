@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -53,7 +54,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   style: GoogleFonts.outfit(
                     fontSize: 40,
                     fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                    color: ThemeColors.primaryText(context),
                     height: 1.1,
                   ),
                 ),
@@ -65,7 +66,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   'Únete a la nueva era de la música.',
                   style: GoogleFonts.outfit(
                     fontSize: 16,
-                    color: Colors.grey[500],
+                    color: ThemeColors.secondaryText(context),
                   ),
                 ),
               ),
@@ -105,7 +106,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('SOY...', style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 12, fontWeight: FontWeight.bold)),
+                    Text('SOY...', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
                     SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
@@ -120,10 +121,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                               onSelected: (bool selected) {
                                 setState(() => _selectedRole = entry.key);
                               },
-                              backgroundColor: const Color(0xFF1E1E1E),
+                              backgroundColor: Theme.of(context).cardColor,
                               selectedColor: AppConstants.primaryColor,
                               labelStyle: GoogleFonts.outfit(
-                                color: isSelected ? Colors.black : Colors.white,
+                                color: isSelected ? Colors.black : ThemeColors.primaryText(context),
                                 fontWeight: FontWeight.bold,
                               ),
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -189,7 +190,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         Text(
           label,
           style: GoogleFonts.outfit(
-            color: Colors.grey[600],
+            color: ThemeColors.secondaryText(context),
             fontSize: 12,
             fontWeight: FontWeight.bold,
             letterSpacing: 1,
@@ -204,9 +205,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           cursorColor: AppConstants.primaryColor,
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: GoogleFonts.outfit(color: Colors.grey[800]),
+            hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context)),
             enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+              borderSide: BorderSide(color: ThemeColors.divider(context).withOpacity(0.1)),
             ),
             focusedBorder: const UnderlineInputBorder(
               borderSide: BorderSide(color: AppConstants.primaryColor, width: 2),

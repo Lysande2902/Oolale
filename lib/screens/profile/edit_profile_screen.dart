@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import '../../services/storage_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -190,7 +191,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Theme.of(context).iconTheme.color),
+          icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -267,7 +268,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
-      child: Text(title, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.bold)),
+      child: Text(title, style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 13, fontWeight: FontWeight.bold)),
     );
   }
 
@@ -286,10 +287,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 ),
                 child: TextField(
                   controller: _gearController,
-                  style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                  style: TextStyle(color: ThemeColors.primaryText(context)),
                   decoration: InputDecoration(
                     labelText: 'Nuevo instrumento (${_gearList.length}/$MAX_GEAR)',
-                    labelStyle: GoogleFonts.outfit(color: Colors.grey[800], fontSize: 14),
+                    labelStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
                     prefixIcon: Icon(Icons.high_quality_outlined, color: AppConstants.primaryColor, size: 20),
                     border: InputBorder.none,
                     contentPadding: const EdgeInsets.all(16),
@@ -346,7 +347,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: Text('Sin instrumentos agregados', 
-              style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 12)),
+              style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
           ),
       ],
     );
@@ -361,10 +362,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       child: TextField(
         controller: controller,
         maxLines: maxLines,
-        style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+        style: TextStyle(color: ThemeColors.primaryText(context)),
         decoration: InputDecoration(
           labelText: label,
-          labelStyle: GoogleFonts.outfit(color: Colors.grey[800], fontSize: 14),
+          labelStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
           prefixIcon: Icon(icon, color: AppConstants.primaryColor, size: 20),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),

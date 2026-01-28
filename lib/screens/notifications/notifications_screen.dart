@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -15,24 +16,60 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   final _supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _notifications = [];
   bool _isLoading = true;
+  RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
     _loadNotifications();
+    _setupRealtimeSubscription();
+  }
+
+  @override
+  void dispose() {
+    _channel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _setupRealtimeSubscription() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    _channel = _supabase
+        .channel('notifications_$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'notifications',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'user_id',
+            value: userId,
+          ),
+          callback: (payload) {
+            debugPrint('🔔 Nueva notificación recibida');
+            _loadNotifications();
+          },
+        )
+        .subscribe();
   }
 
   Future<void> _loadNotifications() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    setState(() => _isLoading = true);
+    if (!_isLoading) setState(() => _isLoading = true);
+    
     try {
+      debugPrint('📥 Cargando notificaciones para: $userId');
+      
       final data = await _supabase
           .from('notifications')
           .select()
           .eq('user_id', userId)
           .order('created_at', ascending: false);
+
+      debugPrint('📦 Notificaciones cargadas: ${data.length}');
 
       if (mounted) {
         setState(() {
@@ -41,6 +78,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         });
       }
     } catch (e) {
+      debugPrint('❌ Error cargando notificaciones: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -80,11 +118,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         ],
       ),
       body: SafeArea(
-        child: _isLoading
+        child: _isLoading && _notifications.isEmpty
             ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
             : _notifications.isEmpty
                 ? _buildEmptyState()
-                : _buildNotificationsList(),
+                : RefreshIndicator(
+                    onRefresh: _loadNotifications,
+                    color: AppConstants.primaryColor,
+                    child: _buildNotificationsList(),
+                  ),
       ),
     );
   }
@@ -92,19 +134,61 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   Widget _buildNotificationsList() {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      physics: const BouncingScrollPhysics(),
+      physics: const AlwaysScrollableScrollPhysics(),
       itemCount: _notifications.length,
       itemBuilder: (context, index) {
         final notification = _notifications[index];
         return _NotificationTile(
           notification: notification,
-          onTap: () {
-            // Lógica simple de navegación
-            context.push('/gig/${notification['data']['gig_id']}');
-          },
+          onTap: () => _handleNotificationTap(notification),
         );
       },
     );
+  }
+
+  Future<void> _handleNotificationTap(Map<String, dynamic> notification) async {
+    // Marcar como leída
+    if (notification['leido'] == false) {
+      try {
+        await _supabase
+            .from('notifications')
+            .update({'leido': true})
+            .eq('id', notification['id']);
+        _loadNotifications();
+      } catch (e) {
+        debugPrint('Error marcando notificación: $e');
+      }
+    }
+
+    // Navegar según el tipo
+    final tipo = notification['tipo'] as String?;
+    final data = notification['data'] as Map<String, dynamic>?;
+
+    if (data == null) return;
+
+    try {
+      switch (tipo) {
+        case 'gig_postulation':
+          if (data['gig_id'] != null) {
+            context.push('/gig/${data['gig_id']}');
+          }
+          break;
+        case 'connection_request':
+          if (data['sender_id'] != null) {
+            context.push('/portfolio/${data['sender_id']}');
+          }
+          break;
+        case 'message':
+          if (data['conversation_id'] != null) {
+            context.push('/chat/${data['conversation_id']}');
+          }
+          break;
+        default:
+          debugPrint('Tipo de notificación no manejado: $tipo');
+      }
+    } catch (e) {
+      debugPrint('Error navegando desde notificación: $e');
+    }
   }
 
   Widget _buildEmptyState() {
@@ -112,11 +196,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_off_outlined, size: 60, color: Colors.grey[800]),
+          Icon(Icons.notifications_off_outlined, size: 60, color: ThemeColors.iconSecondary(context)),
           const SizedBox(height: 16),
           Text(
             'Sin alertas pendientes',
-            style: GoogleFonts.outfit(color: Colors.grey[700], fontSize: 16),
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 16),
           ),
         ],
       ),
@@ -134,6 +218,7 @@ class _NotificationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isUnread = notification['leido'] == false;
     final createdAt = DateTime.parse(notification['created_at']);
+    final tipo = notification['tipo'] as String?;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -141,7 +226,7 @@ class _NotificationTile extends StatelessWidget {
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: isUnread ? AppConstants.primaryColor.withOpacity(0.3) : Theme.of(context).dividerColor.withOpacity(0.05),
+          color: isUnread ? AppConstants.primaryColor.withOpacity(0.3) : ThemeColors.divider(context),
         ),
       ),
       child: InkWell(
@@ -154,10 +239,10 @@ class _NotificationTile extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppConstants.primaryColor.withOpacity(0.1),
+                  color: _getIconColor(tipo).withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.notifications, color: AppConstants.primaryColor, size: 20),
+                child: Icon(_getIcon(tipo), color: _getIconColor(tipo), size: 20),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -174,12 +259,14 @@ class _NotificationTile extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       notification['mensaje'] ?? '',
-                      style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 13),
+                      style: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 6),
                     Text(
                       timeago(createdAt),
-                      style: GoogleFonts.outfit(color: Colors.grey[800], fontSize: 11),
+                      style: GoogleFonts.outfit(color: ThemeColors.iconSecondary(context), fontSize: 11),
                     ),
                   ],
                 ),
@@ -195,6 +282,36 @@ class _NotificationTile extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  IconData _getIcon(String? tipo) {
+    switch (tipo) {
+      case 'gig_postulation':
+        return Icons.event;
+      case 'connection_request':
+        return Icons.person_add;
+      case 'message':
+        return Icons.message;
+      case 'payment':
+        return Icons.payment;
+      default:
+        return Icons.notifications;
+    }
+  }
+
+  Color _getIconColor(String? tipo) {
+    switch (tipo) {
+      case 'gig_postulation':
+        return AppConstants.primaryColor;
+      case 'connection_request':
+        return Colors.blue;
+      case 'message':
+        return Colors.green;
+      case 'payment':
+        return Colors.orange;
+      default:
+        return AppConstants.primaryColor;
+    }
   }
 
   String timeago(DateTime date) {

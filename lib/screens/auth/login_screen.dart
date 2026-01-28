@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -78,7 +79,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           style: GoogleFonts.outfit(
                             fontSize: 16,
                             fontWeight: FontWeight.w300,
-                            color: Colors.grey[500],
+                            color: ThemeColors.secondaryText(context),
                           ),
                         ),
                       ],
@@ -147,7 +148,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Text(
                           '¿No tienes cuenta? ',
-                          style: GoogleFonts.outfit(color: Colors.grey[600]),
+                          style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
                         ),
                         GestureDetector(
                           onTap: () => context.push('/register'),
@@ -193,14 +194,14 @@ class _LoginScreenState extends State<LoginScreen> {
         textInputAction: isLast ? TextInputAction.done : TextInputAction.next,
         decoration: InputDecoration(
           border: InputBorder.none,
-          icon: Icon(icon, color: Colors.grey[600], size: 20),
+          icon: Icon(icon, color: ThemeColors.secondaryText(context), size: 20),
           hintText: hint,
-          hintStyle: GoogleFonts.outfit(color: Colors.grey[600]),
+          hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context)),
           suffixIcon: isPassword
               ? IconButton(
                   icon: Icon(
                     _showPassword ? Icons.visibility_outlined : Icons.visibility_off_outlined,
-                    color: Colors.grey[600],
+                    color: ThemeColors.secondaryText(context),
                     size: 20,
                   ),
                   onPressed: () => setState(() => _showPassword = !_showPassword),
@@ -230,7 +231,7 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(
             content: Text(
               authProvider.errorMessage ?? 'Credenciales incorrectas',
-              style: GoogleFonts.outfit(color: Colors.white),
+              style: GoogleFonts.outfit(color: ThemeColors.primaryText(context)),
             ),
             backgroundColor: Colors.red[900],
             behavior: SnackBarBehavior.floating,

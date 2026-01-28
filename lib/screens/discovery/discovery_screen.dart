@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart'; // Direct DB
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
 
@@ -208,13 +209,13 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                     ),
                     child: TextField(
                       controller: _searchController,
-                      style: TextStyle(color: Theme.of(context).textTheme.bodyLarge?.color),
+                      style: TextStyle(color: ThemeColors.primaryText(context)),
                       onSubmitted: _performSearch,
                       decoration: InputDecoration(
                         hintText: 'Músico, banda o instrumento...',
-                        hintStyle: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.4)),
+                        hintStyle: TextStyle(color: ThemeColors.hintText(context)),
                         border: InputBorder.none,
-                        icon: Icon(Icons.search, color: Theme.of(context).iconTheme.color?.withOpacity(0.5)),
+                        icon: Icon(Icons.search, color: ThemeColors.icon(context)),
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.filter_list, color: AppConstants.accentColor),
                           onPressed: () {
@@ -257,7 +258,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                   ? Stack(
                       children: [
                         ListView(), // Para que el RefreshIndicator funcione
-                        Center(child: Text('No se encontraron resultados', style: GoogleFonts.outfit(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.4)))),
+                        Center(child: Text('No se encontraron resultados', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)))),
                       ],
                     )
                   : GridView.builder(
@@ -303,7 +304,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         child: Text(
           label, 
           style: TextStyle(
-            color: isActive ? Colors.black : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7),
+            color: isActive ? Colors.black : ThemeColors.secondaryText(context),
             fontWeight: FontWeight.bold,
             fontSize: 12
           )
@@ -341,7 +342,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                 backgroundColor: Theme.of(context).scaffoldBackgroundColor,
                 child: Text(
                    (item['nombre_artistico'] ?? 'A')[0].toUpperCase(),
-                   style: TextStyle(fontSize: 24, color: Theme.of(context).textTheme.bodyLarge?.color, fontWeight: FontWeight.bold)
+                   style: TextStyle(fontSize: 24, color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold)
                 ),
                 // backgroundImage: NetworkImage(item['foto_url']) // Si hubiera foto
               ),
@@ -365,9 +366,9 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.location_on, size: 12, color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.4)),
+                Icon(Icons.location_on, size: 12, color: ThemeColors.secondaryText(context)),
                 const SizedBox(width: 4),
-                Text(item['ubicacion_base'] ?? 'Mundo', style: TextStyle(color: Theme.of(context).textTheme.bodySmall?.color?.withOpacity(0.4), fontSize: 12)),
+                Text(item['ubicacion_base'] ?? 'Mundo', style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 12)),
               ],
             ),
             

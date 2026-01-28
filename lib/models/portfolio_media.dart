@@ -1,5 +1,5 @@
 class PortfolioMedia {
-  final String id;
+  final int id;
   final String profileId;
   final String titulo;
   final String tipo; // 'video', 'audio', 'imagen'
@@ -25,11 +25,11 @@ class PortfolioMedia {
 
   factory PortfolioMedia.fromJson(Map<String, dynamic> json) {
     return PortfolioMedia(
-      id: json['id'] as String,
+      id: json['id'] as int,
       profileId: json['profile_id'] as String,
       titulo: json['titulo'] as String? ?? 'Sin título',
       tipo: json['tipo'] as String? ?? 'otro',
-      url: json['url'] as String,
+      url: json['url_recurso'] as String? ?? json['url'] as String? ?? '',
       thumbnailUrl: json['thumbnail_url'] as String?,
       vistas: json['vistas'] as int? ?? 0,
       descargas: json['descargas'] as int? ?? 0,
@@ -44,7 +44,7 @@ class PortfolioMedia {
       'profile_id': profileId,
       'titulo': titulo,
       'tipo': tipo,
-      'url': url,
+      'url_recurso': url,
       'thumbnail_url': thumbnailUrl,
       'vistas': vistas,
       'descargas': descargas,

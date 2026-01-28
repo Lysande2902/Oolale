@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../models/portfolio_media.dart';
+import '../../config/theme_colors.dart';
 import 'package:video_player/video_player.dart';
 import 'package:just_audio/just_audio.dart';
 
@@ -45,7 +46,7 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(widget.media.titulo),
         backgroundColor: Colors.transparent,
@@ -70,7 +71,7 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
               IconButton(
                 icon: Icon(
                   _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-                  color: Colors.white,
+                  color: ThemeColors.icon(context),
                   size: 50,
                 ),
                 onPressed: () {
@@ -93,12 +94,12 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
       return Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(Icons.music_note, size: 100, color: Colors.white),
+          Icon(Icons.music_note, size: 100, color: ThemeColors.icon(context)),
           const SizedBox(height: 20),
           IconButton(
             icon: Icon(
               _isPlaying ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
+              color: ThemeColors.icon(context),
               size: 64,
             ),
             onPressed: () {
@@ -115,6 +116,6 @@ class _MediaDetailScreenState extends State<MediaDetailScreen> {
         ],
       );
     }
-    return const Text('Formato no soportado', style: TextStyle(color: Colors.white));
+    return Text('Formato no soportado', style: TextStyle(color: ThemeColors.primaryText(context)));
   }
 }

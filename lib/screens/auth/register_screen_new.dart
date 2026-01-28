@@ -4,6 +4,7 @@ import 'package:animate_do/animate_do.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -70,11 +71,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
         children: [
           Text(
             AppConstants.appName,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Roboto',
               fontSize: 40,
               fontWeight: FontWeight.w900,
-              color: Colors.white,
+              color: ThemeColors.primaryText(context),
             ),
           ),
           Text(
@@ -158,9 +159,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Roboto',
-              color: Colors.white70,
+              color: ThemeColors.secondaryText(context),
               fontSize: 12,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
@@ -180,9 +181,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
           padding: const EdgeInsets.only(left: 4, bottom: 12),
           child: Text(
             'Tu rol en la escena',
-            style: const TextStyle(
+            style: TextStyle(
               fontFamily: 'Roboto',
-              color: Colors.white70,
+              color: ThemeColors.secondaryText(context),
               fontSize: 12,
               fontWeight: FontWeight.w600,
               letterSpacing: 0.5,
@@ -219,9 +220,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                   size: 26,
                 ),
               ),
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Roboto',
-                color: Colors.white,
+                color: ThemeColors.primaryText(context),
                 fontSize: 15,
                 fontWeight: FontWeight.w500,
               ),
@@ -238,9 +239,9 @@ class _RegisterScreenState extends State<RegisterScreen> {
                       const SizedBox(width: 14),
                       Text(
                         e.value,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Roboto',
-                          color: Colors.white,
+                          color: ThemeColors.primaryText(context),
                           fontSize: 15,
                           fontWeight: FontWeight.w500,
                         ),
@@ -286,17 +287,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
       child: TextField(
         controller: controller,
         obscureText: isPassword && !showPassword,
-        style: const TextStyle(
+        style: TextStyle(
           fontFamily: 'Roboto',
-          color: Colors.white,
+          color: ThemeColors.primaryText(context),
           fontSize: 15,
           fontWeight: FontWeight.w500,
         ),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: const TextStyle(
+          hintStyle: TextStyle(
             fontFamily: 'Roboto',
-            color: Colors.white24,
+            color: ThemeColors.hintText(context),
             fontSize: 14,
             fontWeight: FontWeight.w400,
           ),

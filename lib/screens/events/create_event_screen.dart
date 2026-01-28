@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../../config/constants.dart';
+import '../../config/theme_colors.dart';
 
 class CreateEventScreen extends StatefulWidget {
   const CreateEventScreen({super.key});
@@ -88,13 +89,13 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Evento', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.black,
+        title: Text('Evento', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
         elevation: 0,
         leading: IconButton(
-          icon: const Icon(Icons.close, color: Colors.white),
+          icon: Icon(Icons.close, color: ThemeColors.icon(context)),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -137,23 +138,23 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
   Widget _buildSectionTitle(String title) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
-      child: Text(title, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 13, fontWeight: FontWeight.bold)),
+      child: Text(title, style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 13, fontWeight: FontWeight.bold)),
     );
   }
 
   Widget _buildTextField(TextEditingController ctrl, String hint, IconData icon, {int maxLines = 1}) {
     return Container(
       decoration: BoxDecoration(
-        color: AppConstants.bgDarkPanel,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: TextFormField(
         controller: ctrl,
         maxLines: maxLines,
-        style: const TextStyle(color: Colors.white),
+        style: TextStyle(color: ThemeColors.primaryText(context)),
         decoration: InputDecoration(
           hintText: hint,
-          hintStyle: GoogleFonts.outfit(color: Colors.grey[800]),
+          hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context)),
           prefixIcon: Icon(icon, color: AppConstants.primaryColor, size: 20),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),
@@ -169,19 +170,19 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppConstants.bgDarkPanel,
+          color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: GoogleFonts.outfit(color: Colors.grey[600], fontSize: 10)),
+            Text(label, style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 10)),
             const SizedBox(height: 8),
             Row(
               children: [
                 Icon(icon, color: AppConstants.primaryColor, size: 16),
                 const SizedBox(width: 8),
-                Text(value, style: GoogleFonts.outfit(color: Colors.white, fontSize: 14)),
+                Text(value, style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 14)),
               ],
             ),
           ],
@@ -194,18 +195,18 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
-        color: AppConstants.bgDarkPanel,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: _selectedType,
           isExpanded: true,
-          dropdownColor: AppConstants.bgDarkPanel,
+          dropdownColor: Theme.of(context).cardColor,
           icon: const Icon(Icons.arrow_drop_down, color: AppConstants.primaryColor),
           items: _types.map((m) => DropdownMenuItem(
             value: m,
-            child: Text(m.replaceAll('_', ' ').toUpperCase(), style: GoogleFonts.outfit(color: Colors.white, fontSize: 14)),
+            child: Text(m.replaceAll('_', ' ').toUpperCase(), style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 14)),
           )).toList(),
           onChanged: (val) => setState(() => _selectedType = val!),
         ),

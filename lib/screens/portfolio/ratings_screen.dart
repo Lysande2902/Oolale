@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../config/theme_colors.dart';
 
 /// Pantalla de calificaciones del usuario
 /// Muestra: Promedio, distribución, comentarios, badge de reputación
@@ -96,10 +97,10 @@ class _RatingsScreenState extends State<RatingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
         title: const Text('Calificaciones'),
-        backgroundColor: Colors.black,
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       ),
       body: FutureBuilder<RatingsData>(
         future: _ratingsDataFuture,
@@ -177,7 +178,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.black87, Colors.grey[800]!],
+          colors: [Theme.of(context).scaffoldBackgroundColor, Theme.of(context).cardColor],
         ),
       ),
       child: Column(
@@ -315,7 +316,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.grey[850],
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -411,7 +412,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
         ),
         ...calificaciones.map((cal) {
           return Card(
-            color: Colors.grey[850],
+            color: Theme.of(context).cardColor,
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -491,7 +492,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
         ),
         ...referencias.map((ref) {
           return Card(
-            color: Colors.grey[850],
+            color: Theme.of(context).cardColor,
             margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -541,11 +542,11 @@ class _RatingsScreenState extends State<RatingsScreen> {
       padding: const EdgeInsets.all(32),
       child: Column(
         children: [
-          Icon(Icons.star_outline, size: 64, color: Colors.grey[600]),
+          Icon(Icons.star_outline, size: 64, color: ThemeColors.disabledText(context)),
           const SizedBox(height: 16),
           Text(
             'Sin calificaciones aún',
-            style: TextStyle(color: Colors.grey[400], fontSize: 16),
+            style: TextStyle(color: ThemeColors.secondaryText(context), fontSize: 16),
           ),
         ],
       ),
