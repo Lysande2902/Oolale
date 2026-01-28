@@ -34,7 +34,7 @@ para crear sus perfiles y datos asociados.
 -- Estos INSERT usarán los IDs de los usuarios que ya existen en auth.users
 
 -- Usuario 1: María García - Guitarrista Premium
-INSERT INTO profiles (id, nombre_artistico, bio_rider, instrumento_principal, rol_principal, ubicacion_base, open_to_work, verificado, nivel_badge, avatar_url, slug_url)
+INSERT INTO profiles (id, nombre_artistico, bio_rider, instrumento_principal, rol_principal, ubicacion_base, open_to_work, verificado, avatar_url, slug_url)
 SELECT 
   id,
   'María García',
@@ -44,7 +44,6 @@ SELECT
   'Ciudad de México, CDMX',
   true,
   true,
-  'pro',
   'https://i.pravatar.cc/300?img=1',
   'maria-garcia'
 FROM auth.users WHERE email = 'maria.garcia@test.com'
@@ -56,7 +55,8 @@ ON CONFLICT (id) DO UPDATE SET
   ubicacion_base = EXCLUDED.ubicacion_base,
   open_to_work = EXCLUDED.open_to_work,
   verificado = EXCLUDED.verificado,
-  nivel_badge = EXCLUDED.nivel_badge,
+  avatar_url = EXCLUDED.avatar_url,
+  slug_url = EXCLUDED.slug_url;badge,
   avatar_url = EXCLUDED.avatar_url,
   slug_url = EXCLUDED.slug_url;
 
