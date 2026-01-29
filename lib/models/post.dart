@@ -31,7 +31,7 @@ class Post {
       id: json['id'],
       authorId: json['author_id'],
       authorName: authorInfo != null ? authorInfo['nombre_artistico'] ?? 'Artista' : 'Cargando...',
-      authorAvatar: authorInfo != null ? authorInfo['avatar_url'] : null,
+      authorAvatar: authorInfo != null ? authorInfo['foto_perfil'] : null,
       content: json['content'] ?? '',
       mediaUrl: json['media_url'],
       mediaType: json['media_type'],

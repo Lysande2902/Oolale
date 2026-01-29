@@ -51,25 +51,30 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
       setState(() {
         _nameController.text = data['nombre_artistico'] ?? '';
-        _bioController.text = data['bio_rider'] ?? '';
-        _locationController.text = data['ubicacion_base'] ?? '';
+        _bioController.text = data['bio'] ?? '';
+        _locationController.text = data['ubicacion'] ?? '';
         _instrumentController.text = data['instrumento_principal'] ?? '';
-        _avatarUrl = data['avatar_url'];
+        _avatarUrl = data['foto_perfil'];
         _isLoading = false;
       });
 
-      // Cargar Gear (Mi Equipo)
-      final gearData = await _supabase
-          .from('perfil_gear')
-          .select('gear_catalog(nombre)')
-          .eq('perfil_id', userId);
-      
-      final gearNames = (gearData as List).map((g) => g['gear_catalog']['nombre'].toString()).toList();
-      setState(() {
-        _gearList = gearNames;
-        _gearController.text = gearNames.join(', ');
-      });
-        } catch (e) {
+      // Cargar Gear (Mi Equipo) - si existe la tabla
+      try {
+        final gearData = await _supabase
+            .from('perfil_gear')
+            .select('gear_catalog(nombre)')
+            .eq('perfil_id', userId);
+        
+        final gearNames = (gearData as List).map((g) => g['gear_catalog']['nombre'].toString()).toList();
+        setState(() {
+          _gearList = gearNames;
+          _gearController.text = gearNames.join(', ');
+        });
+      } catch (e) {
+        debugPrint('Gear not loaded: $e');
+      }
+    } catch (e) {
+      debugPrint('Error loading profile: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -114,28 +119,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Future<void> _save() async {
     final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return;
+    if (userId == null) {
+      debugPrint('ERROR: No user ID');
+      return;
+    }
 
+    debugPrint('SAVE: Starting save for user $userId');
     setState(() => _isSaving = true);
     try {
       String? finalAvatarUrl = _avatarUrl;
 
       // 1. Subir imagen si se seleccionó una nueva
       if (_imageFile != null) {
+        debugPrint('SAVE: Uploading avatar...');
         finalAvatarUrl = await StorageService.uploadAvatar(userId, _imageFile!);
+        debugPrint('SAVE: Avatar uploaded: $finalAvatarUrl');
       }
 
       // 2. Actualizar perfil
-      await _supabase.from('profiles').update({
+      debugPrint('SAVE: Updating profile...');
+      debugPrint('SAVE: nombre_artistico: ${_nameController.text.trim()}');
+      debugPrint('SAVE: bio: ${_bioController.text.trim()}');
+      debugPrint('SAVE: ubicacion: ${_locationController.text.trim()}');
+      debugPrint('SAVE: instrumento_principal: ${_instrumentController.text.trim()}');
+      
+      final response = await _supabase.from('profiles').update({
         'nombre_artistico': _nameController.text.trim(),
-        'bio_rider': _bioController.text.trim(),
-        'ubicacion_base': _locationController.text.trim(),
+        'bio': _bioController.text.trim(),
+        'ubicacion': _locationController.text.trim(),
         'instrumento_principal': _instrumentController.text.trim(),
-        'avatar_url': finalAvatarUrl,
-      }).eq('id', userId);
+        'foto_perfil': finalAvatarUrl,
+      }).eq('id', userId).select();
+
+      debugPrint('SAVE: Profile updated successfully: $response');
 
       // 3. Actualizar Gear (Simplificado: Borrar y Reinsertar)
       if (_gearList.isNotEmpty) {
+        debugPrint('SAVE: Updating gear list...');
         // Validar máximo de instrumentos
         if (_gearList.length > MAX_GEAR) {
           throw Exception('Máximo $MAX_GEAR instrumentos permitidos');
@@ -164,18 +184,48 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             'gear_id': gearId,
           });
         }
+        debugPrint('SAVE: Gear updated successfully');
       } else {
         // Si no hay instrumentos, limpiar los existentes
         await _supabase.from('perfil_gear').delete().eq('perfil_id', userId);
       }
 
+      debugPrint('SAVE: All updates completed successfully');
+      
       if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Text('Perfil actualizado correctamente', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            backgroundColor: Colors.green[700],
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
         Navigator.pop(context, true);
       }
     } catch (e) {
-      debugPrint('Error saving profile: $e');
+      debugPrint('SAVE ERROR: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.error, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(child: Text('Error: $e', style: GoogleFonts.outfit())),
+              ],
+            ),
+            backgroundColor: Colors.red[700],
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);

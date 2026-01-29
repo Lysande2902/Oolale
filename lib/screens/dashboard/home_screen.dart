@@ -178,11 +178,9 @@ class _StreamViewState extends State<_StreamView> {
 
   Future<void> _loadPosts() async {
     try {
+      // Cargar 20 posts ALEATORIOS en lugar de cronológicos
       final postsData = await _supabase
-          .from('posts')
-          .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, avatar_url)')
-          .order('created_at', ascending: false)
-          .limit(10);
+          .rpc('get_random_posts', params: {'limit_count': 20});
 
       if (mounted) {
         setState(() {
@@ -191,6 +189,22 @@ class _StreamViewState extends State<_StreamView> {
       }
     } catch (e) {
       debugPrint('Error cargando posts: $e');
+      // Fallback: si no existe la función RPC, usar query normal
+      try {
+        final postsData = await _supabase
+            .from('posts')
+            .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, foto_perfil)')
+            .order('created_at', ascending: false)
+            .limit(20);
+
+        if (mounted) {
+          setState(() {
+            _posts = (postsData as List).map((p) => Post.fromJson(p)).toList();
+          });
+        }
+      } catch (e2) {
+        debugPrint('Error en fallback: $e2');
+      }
     }
   }
 
@@ -208,12 +222,9 @@ class _StreamViewState extends State<_StreamView> {
             _artisticName = profile['nombre_artistico'];
             // Fallback robusto
             if (_artisticName == null || _artisticName!.trim().isEmpty) {
-               _artisticName = profile['nombre_completo'];
-            }
-            if (_artisticName == null || _artisticName!.trim().isEmpty) {
                _artisticName = 'Artista';
             }
-            _profileAvatar = profile['avatar_url'];
+            _profileAvatar = profile['foto_perfil'];
           });
         }
       }
@@ -234,12 +245,21 @@ class _StreamViewState extends State<_StreamView> {
           .eq('verificado', true)
           .limit(10);
 
-      // 4. Últimos Posts
-      final postsData = await _supabase
-          .from('posts')
-          .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, avatar_url)')
-          .order('created_at', ascending: false)
-          .limit(10); // Traemos más para que se vea lleno
+      // 4. Últimos Posts (20 aleatorios)
+      List<dynamic> postsData;
+      try {
+        // Intentar cargar posts aleatorios
+        postsData = await _supabase
+            .rpc('get_random_posts', params: {'limit_count': 20});
+      } catch (e) {
+        debugPrint('RPC no disponible, usando query normal: $e');
+        // Fallback: cargar posts normales
+        postsData = await _supabase
+            .from('posts')
+            .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, foto_perfil)')
+            .order('created_at', ascending: false)
+            .limit(20);
+      }
 
       if (mounted) {
         setState(() {

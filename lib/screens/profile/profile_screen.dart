@@ -38,12 +38,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = Provider.of<AuthProvider>(context, listen: false).user;
     if (user == null) return;
 
+    debugPrint('PROFILE: Cargando perfil para ${user.id}');
+    
     try {
       final profile = await _supabase
           .from('profiles')
           .select()
           .eq('id', user.id)
           .maybeSingle();
+
+      debugPrint('PROFILE: Perfil cargado: $profile');
 
       if (profile == null) {
         if (mounted) setState(() { _profileData = null; _isLoading = false; });
@@ -142,6 +146,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 30),
                   _buildActionButtons(),
                   const SizedBox(height: 30),
+                  // Instrumento Principal
+                  if (_profileData?['instrumento_principal'] != null) ...[
+                    _buildInstrumentCard(),
+                    const SizedBox(height: 30),
+                  ],
                   _buildSectionTitle('Bio'),
                   const SizedBox(height: 10),
                   _buildBioCard(),
@@ -201,10 +210,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: CircleAvatar(
                         radius: 60,
                         backgroundColor: Theme.of(context).cardColor,
-                        backgroundImage: _profileData?['avatar_url'] != null 
-                            ? NetworkImage(_profileData!['avatar_url']) 
+                        backgroundImage: _profileData?['foto_perfil'] != null 
+                            ? NetworkImage(_profileData!['foto_perfil']) 
                             : null,
-                        child: _profileData?['avatar_url'] == null
+                        child: _profileData?['foto_perfil'] == null
                             ? Icon(Icons.person, size: 60, color: ThemeColors.iconSecondary(context))
                             : null,
                       ),
@@ -229,22 +238,114 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: AppConstants.primaryColor.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(20),
-                      border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
-                    ),
-                    child: Text(
-                      (_profileData?['rol_principal'] ?? 'musico').toString().toUpperCase(),
-                      style: GoogleFonts.outfit(
-                        color: AppConstants.primaryColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                  const SizedBox(height: 12),
+                  // Ubicación
+                  if (_profileData?['ubicacion'] != null) ...[
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.location_on_outlined, size: 16, color: ThemeColors.secondaryText(context)),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              _profileData!['ubicacion'],
+                              style: GoogleFonts.outfit(
+                                color: ThemeColors.secondaryText(context),
+                                fontSize: 13,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  ],
+                  // Calificación
+                  if (_profileData?['rating_promedio'] != null && _profileData!['rating_promedio'] > 0) ...[
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        ...List.generate(5, (index) {
+                          final rating = _profileData!['rating_promedio'] ?? 0.0;
+                          return Icon(
+                            index < rating.floor() ? Icons.star : Icons.star_border,
+                            color: AppConstants.primaryColor,
+                            size: 16,
+                          );
+                        }),
+                        const SizedBox(width: 6),
+                        Text(
+                          '${_profileData!['rating_promedio'].toStringAsFixed(1)} (${_profileData!['total_calificaciones'] ?? 0})',
+                          style: GoogleFonts.outfit(
+                            color: ThemeColors.secondaryText(context),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                  // Badges
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (_profileData?['open_to_work'] == true)
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: Colors.green.withOpacity(0.5)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.work_outline, size: 12, color: Colors.green),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Disponible',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.green,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      if (_profileData?['ranking_tipo'] == 'premium') ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [Colors.amber, Colors.orange],
+                            ),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.star, size: 12, color: Colors.black),
+                              const SizedBox(width: 4),
+                              Text(
+                                'PREMIUM',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.black,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
@@ -376,6 +477,63 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Widget _buildInstrumentCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppConstants.primaryColor.withOpacity(0.1),
+            AppConstants.primaryColor.withOpacity(0.05),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppConstants.primaryColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(
+              Icons.music_note,
+              color: AppConstants.primaryColor,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Instrumento Principal',
+                  style: GoogleFonts.outfit(
+                    fontSize: 12,
+                    color: ThemeColors.secondaryText(context),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  _profileData!['instrumento_principal'],
+                  style: GoogleFonts.outfit(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: ThemeColors.primaryText(context),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildBioCard() {
     return Container(
       width: double.infinity,
@@ -386,7 +544,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         border: Border.all(color: ThemeColors.divider(context)),
       ),
       child: Text(
-        _profileData?['bio_rider'] ?? 'Sin biografía. Cuéntale al mundo quién eres.',
+        _profileData?['bio'] ?? 'Sin biografía. Cuéntale al mundo quién eres.',
         style: GoogleFonts.outfit(
           color: ThemeColors.secondaryText(context),
           fontSize: 15,

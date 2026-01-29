@@ -93,6 +93,8 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
       });
 
       // Notificar al organizador
+      // TODO: Implementar notificación de postulación a evento
+      /*
       if (_gig?.organizadorId != null) {
         await NotificationService.createGigPostulationNotification(
           organizerId: _gig!.organizadorId!,
@@ -101,6 +103,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
           senderId: myId,
         );
       }
+      */
 
       if (mounted) {
         messenger.showSnackBar(

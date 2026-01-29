@@ -7,6 +7,7 @@ import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
+import 'blocked_users_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -161,6 +162,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                 const SizedBox(height: 30),
                 _buildSection('CUENTA'),
+                _buildSettingTile(
+                  'Usuarios Bloqueados',
+                  'Gestiona usuarios bloqueados',
+                  Icons.block_rounded,
+                  color: Colors.red,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
+                  ),
+                ),
                 _buildSettingTile(
                   'Premium',
                   'Mejora tu experiencia',

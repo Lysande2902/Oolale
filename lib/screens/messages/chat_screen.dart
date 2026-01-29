@@ -24,13 +24,14 @@ class _ChatScreenState extends State<ChatScreen> {
   
   List<Message> _messages = [];
   bool _isLoading = true;
+  bool _isConnected = false; // Verificar si están conectados
+  bool _checkingConnection = true;
   StreamSubscription? _subscription;
 
   @override
   void initState() {
     super.initState();
-    _loadMessages();
-    _setupRealtime();
+    _checkConnection();
   }
 
   @override
@@ -39,6 +40,44 @@ class _ChatScreenState extends State<ChatScreen> {
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _checkConnection() async {
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId == null) {
+      if (mounted) setState(() => _checkingConnection = false);
+      return;
+    }
+
+    try {
+      // Verificar si hay una conexión aceptada
+      final connectionData = await _supabase
+          .from('connections')
+          .select()
+          .or('and(usuario_id.eq.$myId,conectado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},conectado_id.eq.$myId)')
+          .eq('estatus', 'accepted')
+          .maybeSingle();
+
+      if (mounted) {
+        setState(() {
+          _isConnected = connectionData != null;
+          _checkingConnection = false;
+        });
+
+        if (_isConnected) {
+          _loadMessages();
+          _setupRealtime();
+        }
+      }
+    } catch (e) {
+      debugPrint('Error verificando conexión: $e');
+      if (mounted) {
+        setState(() {
+          _isConnected = false;
+          _checkingConnection = false;
+        });
+      }
+    }
   }
 
   void _setupRealtime() {
@@ -123,6 +162,83 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_checkingConnection) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).cardColor,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(widget.userName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        ),
+        body: const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor)),
+      );
+    }
+
+    if (!_isConnected) {
+      return Scaffold(
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        appBar: AppBar(
+          backgroundColor: Theme.of(context).cardColor,
+          elevation: 0,
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
+            onPressed: () => Navigator.pop(context),
+          ),
+          title: Text(widget.userName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.lock_outline,
+                  size: 80,
+                  color: ThemeColors.iconSecondary(context),
+                ),
+                const SizedBox(height: 24),
+                Text(
+                  'No puedes enviar mensajes',
+                  style: GoogleFonts.outfit(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: ThemeColors.primaryText(context),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Debes estar conectado con ${widget.userName} para poder enviar mensajes.',
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    color: ThemeColors.secondaryText(context),
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.arrow_back),
+                  label: Text('Volver', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppConstants.primaryColor,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(

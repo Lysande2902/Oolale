@@ -4,12 +4,16 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'config/constants.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
+import 'services/notification_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
+import 'screens/auth/forgot_password_screen.dart';
 import 'screens/dashboard/home_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
 import 'screens/events/create_event_screen.dart';
@@ -25,18 +29,42 @@ import 'screens/portfolio/portfolio_screen.dart';
 import 'screens/portfolio/ratings_screen.dart';
 import 'screens/portfolio/upload_media_screen.dart';
 
+// Handler para notificaciones en background
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  await Firebase.initializeApp();
+  debugPrint('🔔 Handling background message: ${message.messageId}');
+  debugPrint('   Title: ${message.notification?.title}');
+  debugPrint('   Body: ${message.notification?.body}');
+  debugPrint('   Data: ${message.data}');
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('es_ES', null);
   
   try {
+    // Inicializar Firebase
+    await Firebase.initializeApp();
+    debugPrint('✅ Firebase inicializado');
+    
+    // Configurar handler de background
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    debugPrint('✅ Background handler configurado');
+    
+    // Inicializar Supabase
     await Supabase.initialize(
       url: AppConstants.supabaseUrl,
       anonKey: AppConstants.supabaseKey,
     );
+    debugPrint('✅ Supabase inicializado');
+    
+    // Inicializar NotificationService
+    await NotificationService.initialize();
+    
     runApp(const MyApp());
   } catch (e) {
-    debugPrint('Error initializing Supabase: $e');
+    debugPrint('Error initializing app: $e');
     runApp(ErrorApp(message: e.toString()));
   }
 }
@@ -107,6 +135,7 @@ class _AppRouter extends StatelessWidget {
         final isLoggedIn = authProvider.status == AuthStatus.authenticated;
         final isLoggingIn = state.uri.toString() == '/login';
         final isRegistering = state.uri.toString() == '/register';
+        final isForgotPassword = state.uri.toString() == '/forgot-password';
         final isAtRoot = state.uri.toString() == '/';
         
         debugPrint('ROUTER: path=${state.uri}, status=${authProvider.status}, isLoggedIn=$isLoggedIn');
@@ -114,7 +143,7 @@ class _AppRouter extends StatelessWidget {
         if (authProvider.status == AuthStatus.checking) return null;
 
         if (!isLoggedIn) {
-          return (isLoggingIn || isRegistering) ? null : '/login';
+          return (isLoggingIn || isRegistering || isForgotPassword) ? null : '/login';
         }
 
         if (isLoggedIn) {
@@ -138,6 +167,10 @@ class _AppRouter extends StatelessWidget {
         GoRoute(
           path: '/register',
           builder: (context, state) => const RegisterScreen(),
+        ),
+        GoRoute(
+          path: '/forgot-password',
+          builder: (context, state) => const ForgotPasswordScreen(),
         ),
         GoRoute(
           path: '/dashboard',

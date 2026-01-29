@@ -4,6 +4,7 @@ import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'connection_requests_screen.dart';
 
 class ConnectionsScreen extends StatefulWidget {
   const ConnectionsScreen({super.key});
@@ -18,6 +19,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
   
   List<Map<String, dynamic>> _connections = [];
   List<Map<String, dynamic>> _pending = [];
+  int _pendingRequestsCount = 0; // Contador de solicitudes pendientes
   bool _isLoading = true;
   final int _pageSize = 20;
   int _activePage = 0;
@@ -61,10 +63,18 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
           .order('id', ascending: false)
           .range(0, _pageSize - 1);
 
+      // Contar solicitudes pendientes en la tabla connections
+      final pendingRequestsCount = await _supabase
+          .from('connections')
+          .select('id')
+          .eq('conectado_id', myId)
+          .eq('estatus', 'pending');
+
       if (mounted) {
         setState(() {
           _connections = List<Map<String, dynamic>>.from(activeData);
           _pending = List<Map<String, dynamic>>.from(pendingData);
+          _pendingRequestsCount = pendingRequestsCount.length;
           _isLoading = false;
           _activePage = 0;
           _pendingPage = 0;
@@ -192,6 +202,48 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         title: Text('CONEXIONES', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        actions: [
+          // Botón de solicitudes pendientes con badge
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.person_add_outlined),
+                onPressed: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ConnectionRequestsScreen()),
+                  );
+                  _loadConnections(); // Recargar después de gestionar solicitudes
+                },
+              ),
+              if (_pendingRequestsCount > 0)
+                Positioned(
+                  right: 8,
+                  top: 8,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.red,
+                      shape: BoxShape.circle,
+                    ),
+                    constraints: const BoxConstraints(
+                      minWidth: 16,
+                      minHeight: 16,
+                    ),
+                    child: Text(
+                      _pendingRequestsCount > 9 ? '9+' : _pendingRequestsCount.toString(),
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppConstants.primaryColor,
