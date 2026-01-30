@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/theme_colors.dart';
+import '../../config/constants.dart';
 
 /// Pantalla de calificaciones del usuario
 /// Muestra: Promedio, distribución, comentarios, badge de reputación
@@ -56,7 +57,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
       final referenciasResponse = await _supabase
           .from('referencias')
           .select()
-          .eq('para_usuario_id', widget.userId)
+          .eq('evaluado_id', widget.userId)
           .order('created_at', ascending: false);
 
       final List<Referencia> referencias =
@@ -135,11 +136,8 @@ class _RatingsScreenState extends State<RatingsScreen> {
           return SingleChildScrollView(
             child: Column(
               children: [
-                // Header con resumen
+                // Header con recuadro de rating
                 _buildHeader(data),
-
-                // Badge de reputación
-                _buildReputationBadge(data.reputacion),
 
                 // Distribución de stars
                 _buildStarDistribution(distribution, data.totalCalificaciones),
@@ -176,136 +174,30 @@ class _RatingsScreenState extends State<RatingsScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Theme.of(context).scaffoldBackgroundColor, Theme.of(context).cardColor],
-        ),
-      ),
-      child: Column(
-        children: [
-          // Rating promedio grande
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
-            decoration: BoxDecoration(
-              color: Colors.deepOrangeAccent,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.star, color: Colors.white, size: 32),
-                const SizedBox(width: 8),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      data.ratingPromedio.toStringAsFixed(1),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      '${data.totalCalificaciones} calificaciones',
-                      style: const TextStyle(color: Colors.white, fontSize: 12),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 24),
+          decoration: BoxDecoration(
+            color: AppConstants.primaryColor,
+            borderRadius: BorderRadius.circular(12),
           ),
-          const SizedBox(height: 16),
-          // Nombre y verificado
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
+              const Icon(Icons.star, color: Colors.black, size: 32),
+              const SizedBox(width: 8),
               Text(
-                data.nombreArtistico,
+                data.ratingPromedio.toStringAsFixed(1),
                 style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
+                  color: Colors.black,
+                  fontSize: 28,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (data.verificado)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Icon(Icons.verified, color: Colors.blue, size: 20),
-                ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  /// Badge de reputación
-  Widget _buildReputationBadge(Reputacion reputacion) {
-    final badge = _getBadgeInfo(reputacion.puntuacion_final);
-
-    return Container(
-      margin: const EdgeInsets.all(16),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: badge.colors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white24),
-      ),
-      child: Column(
-        children: [
-          Icon(badge.icon, color: Colors.white, size: 48),
-          const SizedBox(height: 8),
-          Text(
-            badge.name,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          Text(
-            'Puntuación: ${reputacion.puntuacion_final.toStringAsFixed(1)}',
-            style: const TextStyle(color: Colors.white70, fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              Column(
-                children: [
-                  const Text('Días en plataforma', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  Text(
-                    '${reputacion.dias_en_plataforma}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              Column(
-                children: [
-                  const Text('Tasa respuesta', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  Text(
-                    '${reputacion.tasa_respuesta.toStringAsFixed(0)}%',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              Column(
-                children: [
-                  const Text('Eventos completados', style: TextStyle(color: Colors.white70, fontSize: 11)),
-                  Text(
-                    '${reputacion.eventos_completados}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
       ),
     );
   }
@@ -344,7 +236,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
                   Row(
                     children: List.generate(
                       stars,
-                      (i) => Icon(Icons.star, color: Colors.amber, size: 16),
+                      (i) => Icon(Icons.star, color: AppConstants.primaryColor, size: 16),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -359,8 +251,9 @@ class _RatingsScreenState extends State<RatingsScreen> {
                         valueColor: AlwaysStoppedAnimation<Color>(
                           Color.fromARGB(
                             255,
-                            (255 * (1 - count / total)).toInt(),
-                            (255 * (count / total)).toInt(),
+                            // FIX: Prevenir NaN/Infinity con validación
+                            total > 0 ? (255 * (1 - count / total)).toInt() : 255,
+                            total > 0 ? (255 * (count / total)).toInt() : 0,
                             0,
                           ),
                         ),
@@ -427,7 +320,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
                         children: [
                           ...List.generate(
                             cal.estrellas,
-                            (i) => Icon(Icons.star, color: Colors.amber, size: 16),
+                            (i) => Icon(Icons.star, color: AppConstants.primaryColor, size: 16),
                           ),
                           const SizedBox(width: 8),
                           Text(
@@ -555,6 +448,13 @@ class _RatingsScreenState extends State<RatingsScreen> {
 
   /// Botón para dejar calificación
   Widget _buildLeaveRatingButton() {
+    final currentUserId = _supabase.auth.currentUser?.id;
+    
+    // No mostrar botón si es tu propio perfil
+    if (currentUserId == widget.userId) {
+      return const SizedBox();
+    }
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       child: SizedBox(
@@ -575,47 +475,13 @@ class _RatingsScreenState extends State<RatingsScreen> {
             );
           },
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.deepOrangeAccent,
+            backgroundColor: AppConstants.primaryColor,
+            foregroundColor: Colors.black,
           ),
           child: const Text('Dejar calificación'),
         ),
       ),
     );
-  }
-
-  /// Obtener info de badge
-  BadgeInfo _getBadgeInfo(double puntuacion) {
-    if (puntuacion >= 95) {
-      return BadgeInfo(
-        name: 'LEYENDA',
-        icon: Icons.diamond,
-        colors: [Colors.amber[800]!, Colors.amber[600]!],
-      );
-    } else if (puntuacion >= 85) {
-      return BadgeInfo(
-        name: 'PLATINO',
-        icon: Icons.star,
-        colors: [Colors.blue[800]!, Colors.blue[600]!],
-      );
-    } else if (puntuacion >= 75) {
-      return BadgeInfo(
-        name: 'ORO',
-        icon: Icons.star,
-        colors: [Colors.amber[700]!, Colors.amber[500]!],
-      );
-    } else if (puntuacion >= 65) {
-      return BadgeInfo(
-        name: 'PLATA',
-        icon: Icons.stars,
-        colors: [Colors.grey[600]!, Colors.grey[400]!],
-      );
-    } else {
-      return BadgeInfo(
-        name: 'BRONCE',
-        icon: Icons.shield,
-        colors: [Colors.orange[800]!, Colors.orange[600]!],
-      );
-    }
   }
 }
 
@@ -718,7 +584,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Icon(
                       Icons.star,
-                      color: index < selectedStars ? Colors.amber : Colors.grey,
+                      color: index < selectedStars ? AppConstants.primaryColor : Colors.grey,
                       size: 48,
                     ),
                   ),
@@ -895,16 +761,4 @@ class Referencia {
       verificado: json['verificado'] ?? false,
     );
   }
-}
-
-class BadgeInfo {
-  final String name;
-  final IconData icon;
-  final List<Color> colors;
-
-  BadgeInfo({
-    required this.name,
-    required this.icon,
-    required this.colors,
-  });
 }

@@ -161,16 +161,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
 
                 const SizedBox(height: 30),
+                _buildSection('PRIVACIDAD Y SEGURIDAD'),
+                _buildSettingTile(
+                  'Configuración de Notificaciones',
+                  'Gestiona tus notificaciones',
+                  Icons.notifications_rounded,
+                  onTap: () => context.push('/settings/notifications'),
+                ),
+                _buildSettingTile(
+                  'Configuración de Privacidad',
+                  'Controla quién ve tu información',
+                  Icons.privacy_tip_rounded,
+                  onTap: () => context.push('/settings/privacy-settings'),
+                ),
+                _buildSettingTile(
+                  'Cambiar Contraseña',
+                  'Actualiza tu contraseña',
+                  Icons.lock_rounded,
+                  onTap: () => context.push('/settings/change-password'),
+                ),
+
+                const SizedBox(height: 30),
                 _buildSection('CUENTA'),
+                _buildSettingTile(
+                  'Rankings',
+                  'Ver los mejores artistas',
+                  Icons.emoji_events_rounded,
+                  color: Colors.amber,
+                  onTap: () => context.push('/rankings'),
+                ),
                 _buildSettingTile(
                   'Usuarios Bloqueados',
                   'Gestiona usuarios bloqueados',
                   Icons.block_rounded,
                   color: Colors.red,
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const BlockedUsersScreen()),
-                  ),
+                  onTap: () => context.push('/blocked-users'),
                 ),
                 _buildSettingTile(
                   'Premium',
@@ -178,6 +203,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   Icons.star_rounded,
                   color: AppConstants.accentColor,
                   onTap: () => context.push('/premium'),
+                ),
+                _buildSettingTile(
+                  'Eliminar Cuenta',
+                  'Eliminar permanentemente tu cuenta',
+                  Icons.delete_forever_rounded,
+                  color: AppConstants.errorColor,
+                  onTap: () => context.push('/settings/delete-account'),
+                ),
+
+                const SizedBox(height: 30),
+                _buildSection('AYUDA Y LEGAL'),
+                _buildSettingTile(
+                  'Centro de Ayuda',
+                  'Preguntas frecuentes y soporte',
+                  Icons.help_rounded,
+                  onTap: () => context.push('/settings/help'),
+                ),
+                _buildSettingTile(
+                  'Términos y Condiciones',
+                  'Lee nuestros términos de servicio',
+                  Icons.description_rounded,
+                  onTap: () => context.push('/settings/terms'),
+                ),
+                _buildSettingTile(
+                  'Política de Privacidad',
+                  'Cómo protegemos tu información',
+                  Icons.privacy_tip_rounded,
+                  onTap: () => context.push('/settings/privacy'),
+                ),
+
+                const SizedBox(height: 30),
+                _buildSection('DATOS Y ALMACENAMIENTO'),
+                _buildSettingTile(
+                  'Uso de Datos',
+                  'Ver estadísticas de uso',
+                  Icons.data_usage_rounded,
+                  onTap: () => context.push('/settings/data-usage'),
+                ),
+                _buildSettingTile(
+                  'Limpiar Caché',
+                  'Libera espacio en tu dispositivo',
+                  Icons.cleaning_services_rounded,
+                  onTap: () => context.push('/settings/cache'),
+                ),
+
+                const SizedBox(height: 30),
+                _buildSection('SONIDO Y NOTIFICACIONES'),
+                _buildSettingTile(
+                  'Configuración de Sonidos',
+                  'Personaliza los sonidos de la app',
+                  Icons.volume_up_rounded,
+                  onTap: () => context.push('/settings/sounds'),
+                ),
+
+                const SizedBox(height: 30),
+                _buildSection('CUENTA AVANZADO'),
+                _buildSettingTile(
+                  'Cambiar Email',
+                  'Actualiza tu dirección de email',
+                  Icons.alternate_email_rounded,
+                  onTap: () => context.push('/settings/change-email'),
+                ),
+
+                const SizedBox(height: 30),
+                _buildSection('IDIOMA'),
+                _buildSettingTile(
+                  'Selección de Idioma',
+                  'Cambia el idioma de la app',
+                  Icons.language_rounded,
+                  onTap: () => context.push('/settings/language'),
+                ),
+
+                const SizedBox(height: 30),
+                _buildSection('ACCESIBILIDAD'),
+                _buildSettingTile(
+                  'Accesibilidad',
+                  'Tamaño de fuente y alto contraste',
+                  Icons.accessibility_new_rounded,
+                  onTap: () => context.push('/settings/accessibility'),
                 ),
 
                 const SizedBox(height: 30),

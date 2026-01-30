@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
@@ -11,6 +12,7 @@ import 'profile_detail_lists.dart';
 
 // Importar LeaveRatingScreen
 import '../ratings/leave_rating_screen.dart';
+import '../reports/report_content_screen.dart';
 
 class PublicProfileScreen extends StatefulWidget {
   final String userId;
@@ -24,12 +26,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
   final _supabase = Supabase.instance.client;
   Map<String, dynamic>? _profile;
   List<dynamic> _instrumentos = [];
+  List<String> _genres = [];
   int _eventosCount = 0;
   int _seguidoresCount = 0;
   int _musicCount = 0;
+  int _ratingsCount = 0;
   bool _isLoading = true;
   String? _connectionStatus; // null, 'pending', 'accepted', 'rejected'
   bool _isBlocked = false;
+  bool _hasInteracted = false; // Para verificar si han trabajado juntos o son conexiones
 
   @override
   void initState() {
@@ -52,6 +57,12 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           .select('gear_catalog(nombre)')
           .eq('perfil_id', widget.userId);
 
+      // Cargar géneros musicales
+      final genresData = await _supabase
+          .from('profile_genres')
+          .select('genre')
+          .eq('profile_id', widget.userId);
+
       // Cargar contadores
       final eventosData = await _supabase
           .from('gig_lineup')
@@ -59,9 +70,10 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           .eq('perfil_id', widget.userId);
 
       final seguidoresData = await _supabase
-          .from('crews')
+          .from('connections')
           .select()
-          .eq('target_id', widget.userId);
+          .eq('conectado_id', widget.userId)
+          .eq('estatus', 'accepted');
 
       final musicData = await _supabase
           .from('perfil_gear')
@@ -71,6 +83,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       // Verificar estado de conexión
       String? connectionStatus;
       bool isBlocked = false;
+      bool hasInteracted = false;
       
       if (myId != null && myId != widget.userId) {
         // Verificar si hay conexión
@@ -82,14 +95,39 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         
         if (connectionData != null) {
           connectionStatus = connectionData['estatus']; // 'pending', 'accepted', 'rejected'
+          // Si son conexiones aceptadas, han interactuado
+          if (connectionData['estatus'] == 'accepted') {
+            hasInteracted = true;
+          }
+        }
+        
+        // También verificar si trabajaron juntos en eventos
+        if (!hasInteracted) {
+          final myGigsData = await _supabase
+              .from('gig_lineup')
+              .select('gig_id')
+              .eq('perfil_id', myId);
+
+          if (myGigsData.isNotEmpty) {
+            final gigIds = myGigsData.map((g) => g['gig_id']).toList();
+
+            final sharedGigs = await _supabase
+                .from('gig_lineup')
+                .select('gig_id')
+                .eq('perfil_id', widget.userId)
+                .inFilter('gig_id', gigIds);
+
+            hasInteracted = sharedGigs.isNotEmpty;
+          }
         }
         
         // Verificar si está bloqueado
         final blockData = await _supabase
-            .from('bloqueos')
+            .from('usuarios_bloqueados')
             .select()
-            .eq('bloqueador_id', myId)
+            .eq('usuario_id', myId)
             .eq('bloqueado_id', widget.userId)
+            .eq('activo', true)
             .maybeSingle();
         
         isBlocked = blockData != null;
@@ -99,11 +137,14 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         setState(() {
           _profile = data;
           _instrumentos = gear;
+          _genres = (genresData as List).map((g) => g['genre'].toString()).toList();
           _eventosCount = (eventosData as List).length;
           _seguidoresCount = (seguidoresData as List).length;
           _musicCount = (musicData as List).length;
+          _ratingsCount = data['total_calificaciones'] ?? 0;
           _connectionStatus = connectionStatus;
           _isBlocked = isBlocked;
+          _hasInteracted = hasInteracted;
           _isLoading = false;
         });
       }
@@ -159,6 +200,40 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
                   const SizedBox(height: 10),
                   _buildBioCard(),
                   const SizedBox(height: 30),
+                  
+                  // Géneros musicales
+                  if (_genres.isNotEmpty) ...[
+                    _buildSectionTitle('Géneros Musicales'),
+                    const SizedBox(height: 10),
+                    _buildGenresCard(),
+                    const SizedBox(height: 30),
+                  ],
+                  
+                  // Años de experiencia y tarifa
+                  if (_profile?['years_experience'] != null && _profile!['years_experience'] > 0 ||
+                      _profile?['base_rate'] != null && _profile!['base_rate'] > 0) ...[
+                    _buildExperienceAndRateRow(),
+                    const SizedBox(height: 30),
+                  ],
+                  
+                  // Disponibilidad
+                  if (_profile?['availability'] != null && 
+                      _profile!['availability'].toString() != '{}') ...[
+                    _buildSectionTitle('Disponibilidad'),
+                    const SizedBox(height: 10),
+                    _buildAvailabilityCard(),
+                    const SizedBox(height: 30),
+                  ],
+                  
+                  // Redes sociales
+                  if (_profile?['social_links'] != null && 
+                      _profile!['social_links'].toString() != '{}') ...[
+                    _buildSectionTitle('Redes Sociales'),
+                    const SizedBox(height: 10),
+                    _buildSocialLinksCard(),
+                    const SizedBox(height: 30),
+                  ],
+                  
                   _buildSectionTitle('Mi Equipo'),
                   const SizedBox(height: 10),
                   _buildGearSection(),
@@ -412,24 +487,44 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   
     if (_isBlocked) {
-      return Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.red.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.red.withOpacity(0.3)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.block, color: Colors.red, size: 20),
-            const SizedBox(width: 8),
-            Text(
-              'Usuario bloqueado',
-              style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.bold),
+      return Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.red.withOpacity(0.3)),
             ),
-          ],
-        ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.block, color: Colors.red, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  'Usuario bloqueado',
+                  style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          // Botón para desbloquear
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _showUnblockDialog,
+              icon: const Icon(Icons.lock_open, size: 18),
+              label: const Text('Desbloquear Usuario'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppConstants.primaryColor,
+                side: BorderSide(color: AppConstants.primaryColor.withOpacity(0.5)),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        ],
       );
     }
   
@@ -446,12 +541,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
             // Botón de Galería
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PortfolioScreen(userId: widget.userId),
-                  ),
-                ),
+                onPressed: () => context.push('/portfolio/${widget.userId}'),
                 icon: const Icon(Icons.collections_outlined, size: 18),
                 label: const Text('Galería', style: TextStyle(fontSize: 13)),
                 style: OutlinedButton.styleFrom(
@@ -465,67 +555,51 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
           ],
         ),
         const SizedBox(height: 12),
-        // Botón de Calificar
+        // Botón de Calificar (solo visible si han interactuado)
+        if (widget.userId != myId && _hasInteracted)
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LeaveRatingScreen(
+                      userId: widget.userId,
+                      userName: _profile!['nombre_artistico'] ?? 'Artista',
+                    ),
+                  ),
+                );
+                if (result == true) {
+                  _loadProfile(); // Recargar perfil para actualizar rating
+                }
+              },
+              icon: const Icon(Icons.star_outline, size: 18),
+              label: const Text('Dejar Calificación', style: TextStyle(fontSize: 13)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppConstants.primaryColor.withOpacity(0.2),
+                foregroundColor: AppConstants.primaryColor,
+                side: BorderSide(color: AppConstants.primaryColor.withOpacity(0.5)),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+        if (widget.userId != myId && _hasInteracted) const SizedBox(height: 12),
+        // Botón de Bloquear (Reportar removido - no puedes reportar tu propio perfil)
         SizedBox(
           width: double.infinity,
-          child: ElevatedButton.icon(
-            onPressed: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => LeaveRatingScreen(
-                    userId: widget.userId,
-                    userName: _profile!['nombre_artistico'] ?? 'Artista',
-                  ),
-                ),
-              );
-              if (result == true) {
-                _loadProfile(); // Recargar perfil para actualizar rating
-              }
-            },
-            icon: const Icon(Icons.star_outline, size: 18),
-            label: const Text('Dejar Calificación', style: TextStyle(fontSize: 13)),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppConstants.primaryColor.withOpacity(0.2),
-              foregroundColor: AppConstants.primaryColor,
-              side: BorderSide(color: AppConstants.primaryColor.withOpacity(0.5)),
+          child: OutlinedButton.icon(
+            onPressed: _showBlockDialog,
+            icon: const Icon(Icons.block_outlined, size: 18),
+            label: const Text('Bloquear', style: TextStyle(fontSize: 13)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.red,
+              side: BorderSide(color: Colors.red.withOpacity(0.5)),
               padding: const EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
-        ),
-        const SizedBox(height: 12),
-        // Botones de Reportar y Bloquear
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _showReportDialog,
-                icon: const Icon(Icons.flag_outlined, size: 18),
-                label: const Text('Reportar', style: TextStyle(fontSize: 13)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.orange,
-                  side: BorderSide(color: Colors.orange.withOpacity(0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _showBlockDialog,
-                icon: const Icon(Icons.block_outlined, size: 18),
-                label: const Text('Bloquear', style: TextStyle(fontSize: 13)),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: BorderSide(color: Colors.red.withOpacity(0.5)),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              ),
-            ),
-          ],
         ),
       ],
     );
@@ -535,15 +609,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (_connectionStatus == 'accepted') {
       // Ya son conexiones - Puede mensajear
       return ElevatedButton.icon(
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ChatScreen(
-              userId: widget.userId,
-              userName: _profile!['nombre_artistico'] ?? 'Artista',
-            ),
-          ),
-        ),
+        onPressed: () => context.push('/messages/${widget.userId}', extra: _profile!['nombre_artistico'] ?? 'Artista'),
         icon: const Icon(Icons.chat_bubble_outline),
         label: const Text('Mensaje'),
         style: ElevatedButton.styleFrom(
@@ -587,6 +653,27 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     if (myId == null) return;
 
     try {
+      // Verificar si hay bloqueo (en cualquier dirección)
+      final blockData = await _supabase
+          .from('usuarios_bloqueados')
+          .select()
+          .or('and(usuario_id.eq.$myId,bloqueado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},bloqueado_id.eq.$myId)')
+          .eq('activo', true)
+          .maybeSingle();
+
+      if (blockData != null) {
+        // Hay un bloqueo
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('No puedes conectar con este usuario', style: GoogleFonts.outfit()),
+              backgroundColor: Colors.red[700],
+            ),
+          );
+        }
+        return;
+      }
+
       await _supabase.from('connections').insert({
         'usuario_id': myId,
         'conectado_id': widget.userId,
@@ -623,100 +710,6 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
-  Future<void> _showReportDialog() async {
-    final reasons = [
-      'Spam o contenido engañoso',
-      'Acoso o intimidación',
-      'Contenido inapropiado',
-      'Suplantación de identidad',
-      'Otro',
-    ];
-
-    String? selectedReason;
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          backgroundColor: AppConstants.cardColor,
-          title: Text('Reportar usuario', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                '¿Por qué reportas a este usuario?',
-                style: GoogleFonts.outfit(color: Colors.white70, fontSize: 14),
-              ),
-              const SizedBox(height: 16),
-              ...reasons.map((reason) => RadioListTile<String>(
-                title: Text(reason, style: GoogleFonts.outfit(color: Colors.white, fontSize: 13)),
-                value: reason,
-                groupValue: selectedReason,
-                activeColor: AppConstants.primaryColor,
-                onChanged: (value) => setState(() => selectedReason = value),
-              )),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: Text('Cancelar', style: GoogleFonts.outfit(color: Colors.white54)),
-            ),
-            ElevatedButton(
-              onPressed: selectedReason == null ? null : () => Navigator.pop(context, true),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orange,
-                foregroundColor: Colors.black,
-              ),
-              child: Text('Reportar', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (result == true && selectedReason != null) {
-      await _submitReport(selectedReason!);
-    }
-  }
-
-  Future<void> _submitReport(String reason) async {
-    final myId = _supabase.auth.currentUser?.id;
-    if (myId == null) return;
-
-    try {
-      await _supabase.from('reportes').insert({
-        'reportante_id': myId,
-        'usuario_reportado_id': widget.userId,
-        'contenido_tipo': 'usuario',
-        'categoria': reason,
-        'descripcion': reason,
-        'estatus': 'pendiente',
-        'urgencia': 'media',
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle, color: Colors.white),
-                const SizedBox(width: 12),
-                Text('Reporte enviado. Lo revisaremos pronto.', style: GoogleFonts.outfit()),
-              ],
-            ),
-            backgroundColor: Colors.green[700],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Error enviando reporte: $e');
-    }
-  }
-
   Future<void> _showBlockDialog() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -749,18 +742,113 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
     }
   }
 
+  Future<void> _showUnblockDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppConstants.cardColor,
+        title: Text('Desbloquear usuario', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Text(
+          '¿Estás seguro que quieres desbloquear a ${_profile!['nombre_artistico']}? Podrás ver su contenido y recibir mensajes nuevamente.',
+          style: GoogleFonts.outfit(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+              foregroundColor: Colors.black,
+            ),
+            child: Text('Desbloquear', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _unblockUser();
+    }
+  }
+
+  Future<void> _unblockUser() async {
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      // Eliminar el bloqueo (marcar como inactivo)
+      await _supabase
+          .from('usuarios_bloqueados')
+          .update({
+            'activo': false,
+            'desbloqueado_en': DateTime.now().toIso8601String(),
+          })
+          .eq('usuario_id', myId)
+          .eq('bloqueado_id', widget.userId);
+
+      if (mounted) {
+        setState(() => _isBlocked = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(Icons.check_circle, color: Colors.white),
+                const SizedBox(width: 12),
+                Text('Usuario desbloqueado', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+              ],
+            ),
+            backgroundColor: Colors.green[700],
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        );
+        // Recargar perfil para actualizar estado
+        _loadProfile();
+      }
+    } catch (e) {
+      debugPrint('Error desbloqueando usuario: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al desbloquear usuario', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.red[700],
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _blockUser() async {
     final myId = _supabase.auth.currentUser?.id;
     if (myId == null) return;
 
     try {
-      await _supabase.from('bloqueos').insert({
-        'bloqueador_id': myId,
+      debugPrint('🚫 Bloqueando usuario: ${widget.userId}');
+      
+      // 1. Crear el bloqueo
+      await _supabase.from('usuarios_bloqueados').insert({
+        'usuario_id': myId,
         'bloqueado_id': widget.userId,
+        'motivo_bloqueo': 'manual',
+        'activo': true,
       });
 
+      // 2. Eliminar conexión existente (si existe) - en ambas direcciones
+      await _supabase
+          .from('connections')
+          .delete()
+          .or('and(usuario_id.eq.$myId,conectado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},conectado_id.eq.$myId)');
+
+      debugPrint('✅ Usuario bloqueado exitosamente');
+
       if (mounted) {
-        setState(() => _isBlocked = true);
+        setState(() {
+          _isBlocked = true;
+          _connectionStatus = null; // Resetear estado de conexión
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
@@ -777,7 +865,15 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Error bloqueando usuario: $e');
+      debugPrint('❌ Error bloqueando usuario: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al bloquear usuario', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.red[700],
+          ),
+        );
+      }
     }
   }
 
@@ -864,6 +960,298 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       child: Text(
         _profile!['bio'] ?? 'Sin biografía.',
         style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 15, height: 1.6),
+      ),
+    );
+  }
+
+  Widget _buildGenresCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _genres.map((genre) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppConstants.primaryColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppConstants.primaryColor),
+            ),
+            child: Text(
+              genre,
+              style: GoogleFonts.outfit(
+                color: AppConstants.primaryColor,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildExperienceAndRateRow() {
+    final yearsExp = _profile?['years_experience'] ?? 0;
+    final baseRate = _profile?['base_rate'] ?? 0.0;
+    final currency = _profile?['currency'] ?? 'MXN';
+    
+    return Row(
+      children: [
+        if (yearsExp > 0)
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.work_outline, color: AppConstants.primaryColor, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Experiencia',
+                        style: GoogleFonts.outfit(
+                          color: ThemeColors.secondaryText(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$yearsExp ${yearsExp == 1 ? 'año' : 'años'}',
+                    style: GoogleFonts.outfit(
+                      color: ThemeColors.primaryText(context),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (yearsExp > 0 && baseRate > 0) const SizedBox(width: 12),
+        if (baseRate > 0)
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.attach_money, color: AppConstants.primaryColor, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Tarifa Base',
+                        style: GoogleFonts.outfit(
+                          color: ThemeColors.secondaryText(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '\$$baseRate $currency',
+                    style: GoogleFonts.outfit(
+                      color: ThemeColors.primaryText(context),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildAvailabilityCard() {
+    final availability = _profile?['availability'] as Map<String, dynamic>?;
+    if (availability == null || availability.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        ),
+        child: Center(
+          child: Text(
+            'Sin disponibilidad configurada',
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+          ),
+        ),
+      );
+    }
+
+    final days = {
+      'lunes': 'Lun',
+      'martes': 'Mar',
+      'miercoles': 'Mié',
+      'jueves': 'Jue',
+      'viernes': 'Vie',
+      'sabado': 'Sáb',
+      'domingo': 'Dom',
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: days.entries.map((entry) {
+          final isAvailable = availability[entry.key] == true;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isAvailable 
+                  ? AppConstants.primaryColor.withOpacity(0.2) 
+                  : Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isAvailable 
+                    ? AppConstants.primaryColor 
+                    : Theme.of(context).dividerColor.withOpacity(0.1),
+              ),
+            ),
+            child: Text(
+              entry.value,
+              style: GoogleFonts.outfit(
+                color: isAvailable 
+                    ? AppConstants.primaryColor 
+                    : ThemeColors.secondaryText(context),
+                fontSize: 12,
+                fontWeight: isAvailable ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSocialLinksCard() {
+    final socialLinks = _profile?['social_links'] as Map<String, dynamic>?;
+    if (socialLinks == null || socialLinks.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+        ),
+        child: Center(
+          child: Text(
+            'Sin redes sociales configuradas',
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+          ),
+        ),
+      );
+    }
+
+    final platforms = {
+      'instagram': {'icon': Icons.camera_alt, 'label': 'Instagram'},
+      'youtube': {'icon': Icons.play_circle_outline, 'label': 'YouTube'},
+      'spotify': {'icon': Icons.music_note, 'label': 'Spotify'},
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.05)),
+      ),
+      child: Column(
+        children: platforms.entries.where((entry) {
+          return socialLinks.containsKey(entry.key) && 
+                 socialLinks[entry.key] != null && 
+                 socialLinks[entry.key].toString().isNotEmpty;
+        }).map((entry) {
+          final url = socialLinks[entry.key].toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: InkWell(
+              onTap: () {
+                debugPrint('Opening: $url');
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      entry.value['icon'] as IconData,
+                      color: AppConstants.primaryColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.value['label'] as String,
+                            style: GoogleFonts.outfit(
+                              color: ThemeColors.primaryText(context),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            url,
+                            style: GoogleFonts.outfit(
+                              color: ThemeColors.secondaryText(context),
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.open_in_new,
+                      color: ThemeColors.iconSecondary(context),
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }

@@ -267,22 +267,12 @@ class NotificationService {
       if (userId == null) return 0;
 
       // Intentar con 'read' primero, si falla intentar con 'leido'
-      try {
-        final data = await _supabase
-            .from('notifications')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('read', false);
-        return data.length;
-      } catch (e) {
-        // Si falla, intentar con 'leido'
-        final data = await _supabase
-            .from('notifications')
-            .select('id')
-            .eq('user_id', userId)
-            .eq('leido', false);
-        return data.length;
-      }
+      final data = await _supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('leido', false);
+      return data.length;
     } catch (e) {
       debugPrint('❌ Error obteniendo contador: $e');
       return 0;
@@ -292,19 +282,10 @@ class NotificationService {
   // Marcar notificación como leída
   static Future<void> markAsRead(String notificationId) async {
     try {
-      // Intentar con 'read' primero
-      try {
-        await _supabase
-            .from('notifications')
-            .update({'read': true, 'read_at': DateTime.now().toIso8601String()})
-            .eq('id', notificationId);
-      } catch (e) {
-        // Si falla, intentar con 'leido'
-        await _supabase
-            .from('notifications')
-            .update({'leido': true, 'read_at': DateTime.now().toIso8601String()})
-            .eq('id', notificationId);
-      }
+      await _supabase
+          .from('notifications')
+          .update({'leido': true, 'read_at': DateTime.now().toIso8601String()})
+          .eq('id', notificationId);
       
       debugPrint('✅ Notificación marcada como leída: $notificationId');
     } catch (e) {
@@ -318,21 +299,11 @@ class NotificationService {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return;
 
-      // Intentar con 'read' primero
-      try {
-        await _supabase
-            .from('notifications')
-            .update({'read': true, 'read_at': DateTime.now().toIso8601String()})
-            .eq('user_id', userId)
-            .eq('read', false);
-      } catch (e) {
-        // Si falla, intentar con 'leido'
-        await _supabase
-            .from('notifications')
-            .update({'leido': true, 'read_at': DateTime.now().toIso8601String()})
-            .eq('user_id', userId)
-            .eq('leido', false);
-      }
+      await _supabase
+          .from('notifications')
+          .update({'leido': true, 'read_at': DateTime.now().toIso8601String()})
+          .eq('user_id', userId)
+          .eq('leido', false);
       
       debugPrint('✅ Todas las notificaciones marcadas como leídas');
     } catch (e) {

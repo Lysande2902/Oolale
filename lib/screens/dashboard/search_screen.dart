@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
@@ -27,9 +28,12 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   
   // Filtros
   String? _selectedRole;
+  String? _selectedInstrument;
   String? _selectedLocation;
+  double? _minRating;
   bool _onlyOpenToWork = false;
   bool _onlyVerified = false;
+  String _sortBy = 'recent'; // recent, rating, connections
 
   @override
   void initState() {
@@ -42,6 +46,17 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     
     try {
       final myId = _supabase.auth.currentUser?.id;
+      
+      // Obtener lista de usuarios bloqueados
+      List<String> blockedIds = [];
+      if (myId != null) {
+        final blockedUsers = await _supabase
+            .from('usuarios_bloqueados')
+            .select('bloqueado_id')
+            .eq('usuario_id', myId)
+            .eq('activo', true);
+        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+      }
       
       // 1. Destacados (Premium o verificados con más actividad)
       var featuredQuery = _supabase.from('profiles').select();
@@ -74,9 +89,10 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       
       if (mounted) {
         setState(() {
-          _featured = featuredData;
-          _verified = verifiedData;
-          _artists = varied.take(10).toList();
+          // Filtrar usuarios bloqueados
+          _featured = featuredData.where((u) => !blockedIds.contains(u['id'])).toList();
+          _verified = verifiedData.where((u) => !blockedIds.contains(u['id'])).toList();
+          _artists = varied.where((u) => !blockedIds.contains(u['id'])).take(10).toList();
           _isLoading = false;
         });
       }
@@ -104,6 +120,17 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     try {
       final myId = _supabase.auth.currentUser?.id;
       
+      // Obtener lista de usuarios bloqueados
+      List<String> blockedIds = [];
+      if (myId != null) {
+        final blockedUsers = await _supabase
+            .from('usuarios_bloqueados')
+            .select('bloqueado_id')
+            .eq('usuario_id', myId)
+            .eq('activo', true);
+        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+      }
+      
       // Buscar en múltiples campos
       var queryBuilder = _supabase.from('profiles').select('''
         *,
@@ -125,8 +152,14 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       if (_selectedRole != null) {
         queryBuilder = queryBuilder.eq('rol_principal', _selectedRole!);
       }
-      if (_selectedLocation != null) {
+      if (_selectedInstrument != null && _selectedInstrument!.isNotEmpty) {
+        queryBuilder = queryBuilder.ilike('instrumento_principal', '%$_selectedInstrument%');
+      }
+      if (_selectedLocation != null && _selectedLocation!.isNotEmpty) {
         queryBuilder = queryBuilder.ilike('ubicacion_base', '%$_selectedLocation%');
+      }
+      if (_minRating != null) {
+        queryBuilder = queryBuilder.gte('rating_promedio', _minRating!);
       }
       if (_onlyOpenToWork) {
         queryBuilder = queryBuilder.eq('open_to_work', true);
@@ -135,11 +168,23 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
         queryBuilder = queryBuilder.eq('verificado', true);
       }
 
-      final data = await queryBuilder.limit(60);
+      // Aplicar límite y ordenar resultados
+      final data = await (() {
+        switch (_sortBy) {
+          case 'rating':
+            return queryBuilder.order('rating_promedio', ascending: false).limit(60);
+          case 'connections':
+            return queryBuilder.order('total_conexiones', ascending: false).limit(60);
+          case 'recent':
+          default:
+            return queryBuilder.order('created_at', ascending: false).limit(60);
+        }
+      })();
       
       if (mounted) {
         setState(() {
-          _artists = data;
+          // Filtrar usuarios bloqueados
+          _artists = data.where((u) => !blockedIds.contains(u['id'])).toList();
           _isLoading = false;
         });
       }
@@ -152,9 +197,12 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   void _clearFilters() {
     setState(() {
       _selectedRole = null;
+      _selectedInstrument = null;
       _selectedLocation = null;
+      _minRating = null;
       _onlyOpenToWork = false;
       _onlyVerified = false;
+      _sortBy = 'recent';
     });
     _performSearch(_searchController.text);
   }
@@ -301,6 +349,10 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
             ],
           ),
           const SizedBox(height: 12),
+          
+          // Rol
+          Text('Tipo', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
+          const SizedBox(height: 8),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -317,12 +369,115 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                 setState(() => _selectedRole = _selectedRole == 'venue' ? null : 'venue');
                 _performSearch(_searchController.text);
               }),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Instrumento
+          Text('Instrumento', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
+          const SizedBox(height: 8),
+          Container(
+            height: 40,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.withOpacity(0.3)),
+            ),
+            child: TextField(
+              onChanged: (value) {
+                setState(() => _selectedInstrument = value.isEmpty ? null : value);
+                _performSearch(_searchController.text);
+              },
+              style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Ej: Guitarra, Batería...',
+                hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Ubicación
+          Text('Ubicación', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
+          const SizedBox(height: 8),
+          Container(
+            height: 40,
+            decoration: BoxDecoration(
+              color: Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.grey.withOpacity(0.3)),
+            ),
+            child: TextField(
+              onChanged: (value) {
+                setState(() => _selectedLocation = value.isEmpty ? null : value);
+                _performSearch(_searchController.text);
+              },
+              style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 13),
+              decoration: InputDecoration(
+                hintText: 'Ej: Ciudad, País...',
+                hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          
+          // Calificación mínima
+          Text('Calificación mínima', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _buildFilterChip('4+ ⭐', _minRating == 4.0, () {
+                setState(() => _minRating = _minRating == 4.0 ? null : 4.0);
+                _performSearch(_searchController.text);
+              }),
+              _buildFilterChip('4.5+ ⭐', _minRating == 4.5, () {
+                setState(() => _minRating = _minRating == 4.5 ? null : 4.5);
+                _performSearch(_searchController.text);
+              }),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Otros filtros
+          Text('Otros', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
               _buildFilterChip('Disponible', _onlyOpenToWork, () {
                 setState(() => _onlyOpenToWork = !_onlyOpenToWork);
                 _performSearch(_searchController.text);
               }),
               _buildFilterChip('Verificado', _onlyVerified, () {
                 setState(() => _onlyVerified = !_onlyVerified);
+                _performSearch(_searchController.text);
+              }),
+            ],
+          ),
+          const SizedBox(height: 16),
+          
+          // Ordenar por
+          Text('Ordenar por', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            children: [
+              _buildFilterChip('Recientes', _sortBy == 'recent', () {
+                setState(() => _sortBy = 'recent');
+                _performSearch(_searchController.text);
+              }),
+              _buildFilterChip('Mejor calificados', _sortBy == 'rating', () {
+                setState(() => _sortBy = 'rating');
+                _performSearch(_searchController.text);
+              }),
+              _buildFilterChip('Más conexiones', _sortBy == 'connections', () {
+                setState(() => _sortBy = 'connections');
                 _performSearch(_searchController.text);
               }),
             ],
@@ -412,78 +567,130 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   }
 
   Widget _buildHorizontalCard(dynamic artist) {
+    final rating = (artist['rating_promedio'] ?? 0.0).toDouble();
+    final hasRating = rating > 0;
+    
     return GestureDetector(
       onTap: () {
         if (!mounted) return;
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: artist['id'])),
-        );
+        context.push('/profile/${artist['id']}');
       },
       child: Container(
-        width: 140,
+        width: 150,
         margin: const EdgeInsets.only(right: 12),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: ThemeColors.divider(context)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              height: 100,
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-                gradient: LinearGradient(
-                  colors: [
-                    AppConstants.primaryColor.withOpacity(0.3),
-                    AppConstants.primaryColor.withOpacity(0.05),
-                  ],
-                ),
-                image: artist['avatar_url'] != null
-                    ? DecorationImage(
-                        image: NetworkImage(artist['avatar_url']),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-              ),
-              child: artist['avatar_url'] == null
-                  ? Center(child: Icon(Icons.person, size: 40, color: ThemeColors.icon(context).withOpacity(0.3)))
-                  : null,
-            ),
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            artist['nombre_artistico'] ?? 'Artista',
-                            style: GoogleFonts.outfit(
-                              fontSize: 13,
-                              fontWeight: FontWeight.bold,
-                              color: ThemeColors.primaryText(context),
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+            // Foto con overlay de rating
+            Stack(
+              children: [
+                Container(
+                  height: 110,
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    image: artist['foto_perfil'] != null
+                        ? DecorationImage(
+                            image: NetworkImage(artist['foto_perfil']),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: artist['foto_perfil'] == null
+                      ? Center(
+                          child: Icon(
+                            Icons.person,
+                            size: 50,
+                            color: AppConstants.primaryColor.withOpacity(0.3),
                           ),
-                        ),
-                        if (artist['verificado'] == true)
-                          Icon(Icons.verified, color: AppConstants.primaryColor, size: 14),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      (artist['rol_principal'] ?? 'músico').toString().toUpperCase(),
-                      style: GoogleFonts.outfit(
-                        color: AppConstants.primaryColor,
-                        fontSize: 9,
-                        fontWeight: FontWeight.bold,
+                        )
+                      : null,
+                ),
+                // Rating badge
+                if (hasRating)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.star, color: AppConstants.primaryColor, size: 12),
+                          const SizedBox(width: 2),
+                          Text(
+                            rating.toStringAsFixed(1),
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
+                  ),
+                // Verificado badge
+                if (artist['verificado'] == true)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        color: AppConstants.primaryColor,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.verified, color: Colors.black, size: 14),
+                    ),
+                  ),
+              ],
+            ),
+            // Info
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      artist['nombre_artistico'] ?? 'Artista',
+                      style: GoogleFonts.outfit(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: ThemeColors.primaryText(context),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    if (artist['instrumento_principal'] != null)
+                      Text(
+                        artist['instrumento_principal'],
+                        style: GoogleFonts.outfit(
+                          color: ThemeColors.secondaryText(context),
+                          fontSize: 10,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
                   ],
                 ),
               ),
@@ -524,10 +731,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
             artist: artists[index],
             onTap: () {
               if (!mounted) return;
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: artists[index]['id'])),
-              );
+              context.push('/profile/${artists[index]['id']}');
             },
           ),
         );
@@ -544,6 +748,9 @@ class _ArtistCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final rating = (artist['rating_promedio'] ?? 0.0).toDouble();
+    final hasRating = rating > 0;
+    
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -551,35 +758,81 @@ class _ArtistCard extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(color: ThemeColors.divider(context)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            Container(
-              width: 60,
-              height: 60,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  colors: [
-                    AppConstants.primaryColor.withOpacity(0.3),
-                    AppConstants.primaryColor.withOpacity(0.05),
-                  ],
+            // Foto con rating overlay
+            Stack(
+              children: [
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    color: Theme.of(context).scaffoldBackgroundColor,
+                    image: artist['foto_perfil'] != null
+                        ? DecorationImage(
+                            image: NetworkImage(artist['foto_perfil']),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: artist['foto_perfil'] == null
+                      ? Center(
+                          child: Icon(
+                            Icons.person,
+                            size: 35,
+                            color: AppConstants.primaryColor.withOpacity(0.3),
+                          ),
+                        )
+                      : null,
                 ),
-                image: artist['avatar_url'] != null
-                    ? DecorationImage(image: NetworkImage(artist['avatar_url']), fit: BoxFit.cover)
-                    : null,
-              ),
-              child: artist['avatar_url'] == null
-                  ? Center(child: Icon(Icons.person, size: 30, color: ThemeColors.icon(context).withOpacity(0.3)))
-                  : null,
+                // Rating badge
+                if (hasRating)
+                  Positioned(
+                    bottom: 4,
+                    right: 4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.75),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.star, color: AppConstants.primaryColor, size: 10),
+                          const SizedBox(width: 2),
+                          Text(
+                            rating.toStringAsFixed(1),
+                            style: GoogleFonts.outfit(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
-            const SizedBox(width: 14),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Nombre y verificado
                   Row(
                     children: [
                       Expanded(
@@ -594,36 +847,38 @@ class _ArtistCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (artist['verificado'] == true)
+                      if (artist['verificado'] == true) ...[
+                        const SizedBox(width: 4),
                         Icon(Icons.verified, color: AppConstants.primaryColor, size: 16),
+                      ],
                     ],
                   ),
+                  const SizedBox(height: 3),
+                  // Instrumento
+                  if (artist['instrumento_principal'] != null)
+                    Text(
+                      artist['instrumento_principal'],
+                      style: GoogleFonts.outfit(
+                        color: ThemeColors.secondaryText(context),
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   const SizedBox(height: 4),
+                  // Rol y ubicación
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppConstants.primaryColor.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          (artist['rol_principal'] ?? 'músico').toString().toUpperCase(),
-                          style: GoogleFonts.outfit(
-                            color: AppConstants.primaryColor,
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
                       if (artist['ubicacion_base'] != null) ...[
-                        const SizedBox(width: 8),
                         Icon(Icons.location_on, color: ThemeColors.iconSecondary(context), size: 12),
                         const SizedBox(width: 2),
-                        Expanded(
+                        Flexible(
                           child: Text(
                             artist['ubicacion_base'],
-                            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 11),
+                            style: GoogleFonts.outfit(
+                              color: ThemeColors.secondaryText(context),
+                              fontSize: 11,
+                            ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -634,7 +889,8 @@ class _ArtistCard extends StatelessWidget {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: ThemeColors.iconSecondary(context), size: 20),
+            const SizedBox(width: 8),
+            Icon(Icons.chevron_right, color: ThemeColors.iconSecondary(context), size: 22),
           ],
         ),
       ),

@@ -9,8 +9,8 @@ import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 import 'edit_profile_screen.dart';
-import 'public_profile_screen.dart';
 import 'profile_detail_lists.dart';
+import 'public_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -23,9 +23,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _supabase = Supabase.instance.client;
   Map<String, dynamic>? _profileData;
   List<dynamic> _instrumentos = [];
+  List<String> _genres = [];
   int _eventosCount = 0;
   int _seguidoresCount = 0;
   int _musicCount = 0;
+  int _ratingsCount = 0;
   bool _isLoading = true;
 
   @override
@@ -59,6 +61,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .select('gear_catalog(nombre)')
           .eq('perfil_id', user.id);
 
+      // Cargar géneros musicales
+      final genresData = await _supabase
+          .from('profile_genres')
+          .select('genre')
+          .eq('profile_id', user.id);
+
       // Cargar contadores
       final eventosData = await _supabase
           .from('gig_lineup')
@@ -66,22 +74,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
           .eq('perfil_id', user.id);
 
       final seguidoresData = await _supabase
-          .from('crews')
+          .from('connections')
           .select()
-          .eq('target_id', user.id);
+          .eq('conectado_id', user.id)
+          .eq('estatus', 'accepted');
 
       final musicData = await _supabase
           .from('perfil_gear')
           .select()
           .eq('perfil_id', user.id);
 
+      // Cargar ratings count
+      final ratingsCount = profile['total_calificaciones'] ?? 0;
+
       if (mounted) {
         setState(() {
           _profileData = profile;
           _instrumentos = gear;
+          _genres = (genresData as List).map((g) => g['genre'].toString()).toList();
           _eventosCount = (eventosData as List).length;
           _seguidoresCount = (seguidoresData as List).length;
           _musicCount = (musicData as List).length;
+          _ratingsCount = ratingsCount;
           _isLoading = false;
         });
       }
@@ -155,6 +169,40 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 10),
                   _buildBioCard(),
                   const SizedBox(height: 30),
+                  
+                  // Géneros musicales
+                  if (_genres.isNotEmpty) ...[
+                    _buildSectionTitle('Géneros Musicales'),
+                    const SizedBox(height: 10),
+                    _buildGenresCard(),
+                    const SizedBox(height: 30),
+                  ],
+                  
+                  // Años de experiencia y tarifa
+                  if (_profileData?['years_experience'] != null && _profileData!['years_experience'] > 0 ||
+                      _profileData?['base_rate'] != null && _profileData!['base_rate'] > 0) ...[
+                    _buildExperienceAndRateRow(),
+                    const SizedBox(height: 30),
+                  ],
+                  
+                  // Disponibilidad
+                  if (_profileData?['availability'] != null && 
+                      _profileData!['availability'].toString() != '{}') ...[
+                    _buildSectionTitle('Disponibilidad'),
+                    const SizedBox(height: 10),
+                    _buildAvailabilityCard(),
+                    const SizedBox(height: 30),
+                  ],
+                  
+                  // Redes sociales
+                  if (_profileData?['social_links'] != null && 
+                      _profileData!['social_links'].toString() != '{}') ...[
+                    _buildSectionTitle('Redes Sociales'),
+                    const SizedBox(height: 10),
+                    _buildSocialLinksCard(),
+                    const SizedBox(height: 30),
+                  ],
+                  
                   _buildPortfolioButton(),
                   const SizedBox(height: 30),
                   _buildSectionTitle('Mi Equipo'),
@@ -371,8 +419,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         Container(width: 1, height: 40, color: ThemeColors.divider(context)),
         _buildStat(
-          _musicCount.toString(), 'Música', // Que es perfil_gear en realidad
+          _musicCount.toString(), 'Equipo',
           () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: _profileData!['id']))),
+        ),
+        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
+        _buildStat(
+          _ratingsCount.toString(), 'Ratings',
+          () {
+            // Ver mis ratings recibidos
+            final myId = _supabase.auth.currentUser?.id;
+            if (myId != null) {
+              context.push('/ratings/$myId');
+            }
+          },
         ),
       ],
     );
@@ -439,14 +498,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: () {
               final myId = Supabase.instance.client.auth.currentUser?.id;
               if (myId != null) {
+                // Navegar a public_profile_screen para ver cómo te ven otros usuarios
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: myId)),
+                  MaterialPageRoute(
+                    builder: (_) => PublicProfileScreen(userId: myId),
+                  ),
                 );
               }
             },
             icon: Icon(Icons.remove_red_eye_outlined, color: ThemeColors.icon(context)),
-            tooltip: 'Ver mi perfil público',
+            tooltip: 'Ver cómo me ven otros usuarios',
           ),
         ),
         const SizedBox(width: 12),
@@ -550,6 +612,301 @@ class _ProfileScreenState extends State<ProfileScreen> {
           fontSize: 15,
           height: 1.6,
         ),
+      ),
+    );
+  }
+
+  Widget _buildGenresCard() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _genres.map((genre) {
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppConstants.primaryColor.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(color: AppConstants.primaryColor),
+            ),
+            child: Text(
+              genre,
+              style: GoogleFonts.outfit(
+                color: AppConstants.primaryColor,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildExperienceAndRateRow() {
+    final yearsExp = _profileData?['years_experience'] ?? 0;
+    final baseRate = _profileData?['base_rate'] ?? 0.0;
+    final currency = _profileData?['currency'] ?? 'MXN';
+    
+    return Row(
+      children: [
+        if (yearsExp > 0)
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: ThemeColors.divider(context)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.work_outline, color: AppConstants.primaryColor, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Experiencia',
+                        style: GoogleFonts.outfit(
+                          color: ThemeColors.secondaryText(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '$yearsExp ${yearsExp == 1 ? 'año' : 'años'}',
+                    style: GoogleFonts.outfit(
+                      color: ThemeColors.primaryText(context),
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        if (yearsExp > 0 && baseRate > 0) const SizedBox(width: 12),
+        if (baseRate > 0)
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: ThemeColors.divider(context)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.attach_money, color: AppConstants.primaryColor, size: 18),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Tarifa Base',
+                        style: GoogleFonts.outfit(
+                          color: ThemeColors.secondaryText(context),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '\$$baseRate $currency',
+                    style: GoogleFonts.outfit(
+                      color: ThemeColors.primaryText(context),
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildAvailabilityCard() {
+    final availability = _profileData?['availability'] as Map<String, dynamic>?;
+    if (availability == null || availability.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: ThemeColors.divider(context)),
+        ),
+        child: Center(
+          child: Text(
+            'Sin disponibilidad configurada',
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+          ),
+        ),
+      );
+    }
+
+    final days = {
+      'lunes': 'Lun',
+      'martes': 'Mar',
+      'miercoles': 'Mié',
+      'jueves': 'Jue',
+      'viernes': 'Vie',
+      'sabado': 'Sáb',
+      'domingo': 'Dom',
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context)),
+      ),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: days.entries.map((entry) {
+          final isAvailable = availability[entry.key] == true;
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: isAvailable 
+                  ? AppConstants.primaryColor.withOpacity(0.2) 
+                  : Theme.of(context).scaffoldBackgroundColor,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isAvailable 
+                    ? AppConstants.primaryColor 
+                    : ThemeColors.divider(context),
+              ),
+            ),
+            child: Text(
+              entry.value,
+              style: GoogleFonts.outfit(
+                color: isAvailable 
+                    ? AppConstants.primaryColor 
+                    : ThemeColors.secondaryText(context),
+                fontSize: 12,
+                fontWeight: isAvailable ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildSocialLinksCard() {
+    final socialLinks = _profileData?['social_links'] as Map<String, dynamic>?;
+    if (socialLinks == null || socialLinks.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: ThemeColors.divider(context)),
+        ),
+        child: Center(
+          child: Text(
+            'Sin redes sociales configuradas',
+            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+          ),
+        ),
+      );
+    }
+
+    final platforms = {
+      'instagram': {'icon': Icons.camera_alt, 'label': 'Instagram'},
+      'youtube': {'icon': Icons.play_circle_outline, 'label': 'YouTube'},
+      'spotify': {'icon': Icons.music_note, 'label': 'Spotify'},
+    };
+
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context)),
+      ),
+      child: Column(
+        children: platforms.entries.where((entry) {
+          return socialLinks.containsKey(entry.key) && 
+                 socialLinks[entry.key] != null && 
+                 socialLinks[entry.key].toString().isNotEmpty;
+        }).map((entry) {
+          final url = socialLinks[entry.key].toString();
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: InkWell(
+              onTap: () {
+                // Aquí podrías abrir el URL con url_launcher
+                debugPrint('Opening: $url');
+              },
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: ThemeColors.divider(context)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      entry.value['icon'] as IconData,
+                      color: AppConstants.primaryColor,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.value['label'] as String,
+                            style: GoogleFonts.outfit(
+                              color: ThemeColors.primaryText(context),
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          Text(
+                            url,
+                            style: GoogleFonts.outfit(
+                              color: ThemeColors.secondaryText(context),
+                              fontSize: 11,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.open_in_new,
+                      color: ThemeColors.iconSecondary(context),
+                      size: 16,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        }).toList(),
       ),
     );
   }

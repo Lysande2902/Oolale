@@ -39,24 +39,42 @@ class _HireMusicianScreenState extends State<HireMusicianScreen> with SingleTick
     setState(() => _isLoading = true);
 
     try {
+      // Obtener lista de usuarios bloqueados
+      final blockedUsers = await _supabase
+          .from('usuarios_bloqueados')
+          .select('bloqueado_id')
+          .eq('usuario_id', myId)
+          .eq('activo', true);
+      
+      final blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+
       // Ofertas recibidas (donde yo soy el músico)
       final received = await _supabase
           .from('hirings')
-          .select('*, employer:profiles!employer_id(nombre_artistico, avatar_url)')
+          .select('*, employer:profiles!employer_id(nombre_artistico, foto_perfil)')
           .eq('musician_id', myId)
           .order('created_at', ascending: false);
 
       // Ofertas enviadas (donde yo soy el empleador)
       final sent = await _supabase
           .from('hirings')
-          .select('*, musician:profiles!musician_id(nombre_artistico, avatar_url)')
+          .select('*, musician:profiles!musician_id(nombre_artistico, foto_perfil)')
           .eq('employer_id', myId)
           .order('created_at', ascending: false);
 
       if (mounted) {
+        // Filtrar ofertas de usuarios bloqueados
+        final filteredReceived = (received as List)
+            .where((offer) => !blockedIds.contains(offer['employer_id']))
+            .toList();
+        
+        final filteredSent = (sent as List)
+            .where((offer) => !blockedIds.contains(offer['musician_id']))
+            .toList();
+
         setState(() {
-          _receivedOffers = List<Map<String, dynamic>>.from(received);
-          _sentOffers = List<Map<String, dynamic>>.from(sent);
+          _receivedOffers = List<Map<String, dynamic>>.from(filteredReceived);
+          _sentOffers = List<Map<String, dynamic>>.from(filteredSent);
           _isLoading = false;
         });
       }

@@ -1,0 +1,206 @@
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import '../config/constants.dart';
+import '../config/theme_colors.dart';
+import '../models/message.dart';
+import 'package:intl/intl.dart';
+
+class MediaMessageBubble extends StatelessWidget {
+  final Message message;
+  final bool isMe;
+  final VoidCallback? onImageTap;
+  final VoidCallback? onAudioTap;
+
+  const MediaMessageBubble({
+    super.key,
+    required this.message,
+    required this.isMe,
+    this.onImageTap,
+    this.onAudioTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+        decoration: BoxDecoration(
+          color: isMe ? AppConstants.primaryColor : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(20),
+            topRight: const Radius.circular(20),
+            bottomLeft: Radius.circular(isMe ? 20 : 4),
+            bottomRight: Radius.circular(isMe ? 4 : 20),
+          ),
+          border: isMe ? null : Border.all(color: ThemeColors.divider(context)),
+        ),
+        child: Column(
+          crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+            if (message.mediaType == 'image') _buildImageContent(context),
+            if (message.mediaType == 'audio') _buildAudioContent(context),
+            if (message.content.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  message.content,
+                  style: GoogleFonts.outfit(
+                    color: isMe ? Colors.black : ThemeColors.primaryText(context),
+                    fontSize: 15,
+                    fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+              ),
+            Padding(
+              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 10),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    DateFormat('HH:mm').format(message.sentAt),
+                    style: GoogleFonts.outfit(
+                      color: isMe ? Colors.black.withOpacity(0.5) : ThemeColors.secondaryText(context),
+                      fontSize: 10,
+                    ),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 4),
+                    _buildStatusIcon(context),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildImageContent(BuildContext context) {
+    return GestureDetector(
+      onTap: onImageTap,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(20),
+          topRight: Radius.circular(20),
+        ),
+        child: Image.network(
+          message.mediaUrl!,
+          width: double.infinity,
+          height: 200,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return Container(
+              width: double.infinity,
+              height: 200,
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: Center(
+                child: CircularProgressIndicator(
+                  value: loadingProgress.expectedTotalBytes != null
+                      ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                      : null,
+                  color: AppConstants.primaryColor,
+                ),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stackTrace) {
+            return Container(
+              width: double.infinity,
+              height: 200,
+              color: Theme.of(context).scaffoldBackgroundColor,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.broken_image, size: 40, color: ThemeColors.iconSecondary(context)),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Error al cargar imagen',
+                    style: GoogleFonts.outfit(
+                      color: ThemeColors.secondaryText(context),
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAudioContent(BuildContext context) {
+    return GestureDetector(
+      onTap: onAudioTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isMe ? Colors.black.withOpacity(0.1) : AppConstants.primaryColor.withOpacity(0.1),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                Icons.play_arrow,
+                color: isMe ? Colors.black : AppConstants.primaryColor,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Mensaje de voz',
+                  style: GoogleFonts.outfit(
+                    color: isMe ? Colors.black : ThemeColors.primaryText(context),
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Toca para reproducir',
+                  style: GoogleFonts.outfit(
+                    color: isMe ? Colors.black.withOpacity(0.6) : ThemeColors.secondaryText(context),
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusIcon(BuildContext context) {
+    switch (message.status) {
+      case 'read':
+        return const Icon(
+          Icons.done_all,
+          size: 14,
+          color: AppConstants.primaryColor,
+        );
+      case 'delivered':
+        return Icon(
+          Icons.done_all,
+          size: 14,
+          color: Colors.black.withOpacity(0.5),
+        );
+      case 'sent':
+      default:
+        return Icon(
+          Icons.done,
+          size: 14,
+          color: Colors.black.withOpacity(0.5),
+        );
+    }
+  }
+}

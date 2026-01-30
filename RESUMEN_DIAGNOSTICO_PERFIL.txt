@@ -1,0 +1,127 @@
+═══════════════════════════════════════════════════════════════
+  🔍 DIAGNÓSTICO: PERFIL NO SE MUESTRA
+═══════════════════════════════════════════════════════════════
+
+PROBLEMA REPORTADO:
+-------------------
+El perfil no muestra los datos (nombre, bio, ubicación, instrumento)
+aunque al editar el perfil se ve que los datos SÍ existen.
+
+CAMBIOS REALIZADOS:
+-------------------
+✅ Agregados logs de depuración detallados en unified_profile_screen.dart
+✅ Creado script SQL de diagnóstico (DIAGNOSTICO_PERFIL_DISPLAY.sql)
+✅ Creada guía completa de solución (SOLUCION_PERFIL_NO_SE_VE.md)
+
+PRÓXIMOS PASOS PARA TI:
+-------------------
+
+PASO 1: EJECUTAR DIAGNÓSTICO SQL
+---------------------------------
+1. Ve a: https://supabase.com/dashboard/project/lwrlunndqzepwsbmofki/sql/new
+2. Abre el archivo: DIAGNOSTICO_PERFIL_DISPLAY.sql
+3. Reemplaza 'salas@gmail.com' con tu email (7 veces)
+4. Click en "Run"
+5. Revisa los resultados:
+   - ¿Tu perfil existe?
+   - ¿Los campos tienen valores o son NULL?
+   - ¿Cuándo fue la última actualización?
+
+PASO 2: REINICIAR APP Y VER LOGS
+---------------------------------
+1. Detén la app (presiona 'q' en la terminal)
+2. Ejecuta: flutter run
+3. Inicia sesión
+4. Ve al tab de Perfil
+5. Busca en los logs estas líneas:
+
+   🔍 LOAD PROFILE: Starting for userId=...
+   ✅ LOAD PROFILE: Profile found
+      - nombre_artistico: [tu nombre]
+      - bio: [tu bio]
+      - ubicacion: [tu ubicación]
+      - instrumento_principal: [tu instrumento]
+   ✅ LOAD PROFILE: State updated successfully
+   🎨 RENDER: Building header
+   🎨 RENDER: Building bio card
+
+PASO 3: INTERPRETAR RESULTADOS
+-------------------------------
+
+CASO A: Los logs muestran tus datos correctamente
+→ Problema de renderizado (colores, tema)
+→ Prueba cambiar el tema en Configuración
+
+CASO B: Los logs muestran NULL o vacío
+→ Los datos no están en la base de datos
+→ Edita el perfil de nuevo y guarda
+→ Si sigue sin funcionar, ejecuta FIX_PROFILE_CREATION.sql
+
+CASO C: No aparecen logs
+→ La pantalla no se está cargando
+→ Busca errores en rojo en la terminal
+→ Comparte el error completo
+
+PASO 4: PROBAR EDICIÓN
+-----------------------
+1. Click en "Editar Perfil"
+2. Cambia algo (ej: agrega "TEST" al nombre)
+3. Click en "Guardar"
+4. Busca en los logs:
+   🔄 EDIT: Opening edit screen
+   SAVE: Profile updated successfully
+   🔄 EDIT: Returned from edit screen, reloading profile...
+   🔍 LOAD PROFILE: Starting...
+5. ¿Aparece el cambio en la pantalla?
+
+ARCHIVOS IMPORTANTES:
+---------------------
+📄 DIAGNOSTICO_PERFIL_DISPLAY.sql      → Script SQL para verificar datos
+📄 SOLUCION_PERFIL_NO_SE_VE.md         → Guía completa paso a paso
+📄 FIX_PROFILE_CREATION.sql            → Script para crear perfiles faltantes
+📄 SOLUCION_PROBLEMA_PERFIL.md         → Solución anterior (referencia)
+
+INFORMACIÓN QUE NECESITO:
+-------------------------
+Para ayudarte mejor, necesito que me compartas:
+
+1. RESULTADO del script SQL (DIAGNOSTICO_PERFIL_DISPLAY.sql)
+   - ¿Tu perfil existe?
+   - ¿Qué campos son NULL?
+   - ¿Cuándo fue la última actualización?
+
+2. LOGS de Flutter (desde que abres el perfil)
+   - Copia desde "🔍 LOAD PROFILE" hasta "🎨 RENDER"
+   - Si hay errores en rojo, cópialos también
+
+3. SCREENSHOTS
+   - Pantalla de perfil (aunque esté en blanco)
+   - Pantalla de editar perfil (mostrando que hay datos)
+
+POSIBLES CAUSAS:
+----------------
+❌ Perfil no existe en la base de datos
+   → Ejecutar FIX_PROFILE_CREATION.sql
+
+❌ Datos son NULL en la base de datos
+   → Editar perfil y guardar de nuevo
+
+❌ Problema de renderizado (colores invisibles)
+   → Cambiar tema, verificar contraste
+
+❌ No se recarga después de editar
+   → Ya corregido con los logs, debe funcionar ahora
+
+❌ Columnas incorrectas
+   → Ya corregido, usa nombre_artistico, foto_perfil, bio
+
+SIGUIENTE MENSAJE:
+------------------
+Por favor ejecuta el PASO 1 y PASO 2, y compárteme:
+1. Los resultados del script SQL
+2. Los logs de Flutter
+3. ¿Qué ves en la pantalla? (describe o screenshot)
+
+Con esa información podré identificar exactamente qué está pasando.
+
+═══════════════════════════════════════════════════════════════

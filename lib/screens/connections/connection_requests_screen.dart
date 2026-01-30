@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
@@ -49,11 +50,37 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
   }
 
   Future<void> _acceptRequest(String connectionId, String userId) async {
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
     try {
+      // Actualizar estatus de la conexión
       await _supabase
           .from('connections')
           .update({'estatus': 'accepted', 'updated_at': DateTime.now().toIso8601String()})
           .eq('id', connectionId);
+
+      // Obtener mi nombre artístico para la notificación
+      try {
+        final myProfile = await _supabase
+            .from('profiles')
+            .select('nombre_artistico')
+            .eq('id', myId)
+            .single();
+
+        // Crear notificación de conexión aceptada
+        await _supabase.from('notifications').insert({
+          'user_id': userId, // El que envió la solicitud
+          'tipo': 'connection_accepted',
+          'titulo': 'Solicitud aceptada',
+          'mensaje': '${myProfile['nombre_artistico']} aceptó tu solicitud de conexión',
+          'leido': false,
+          'data': {'sender_id': myId},
+        });
+      } catch (notifError) {
+        debugPrint('Error creando notificación: $notifError');
+        // No bloquear la funcionalidad principal si falla la notificación
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -195,12 +222,7 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
             children: [
               // Avatar
               GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => PublicProfileScreen(userId: profile['id']),
-                  ),
-                ),
+                onTap: () => context.push('/profile/${profile['id']}'),
                 child: Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -225,12 +247,7 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => PublicProfileScreen(userId: profile['id']),
-                        ),
-                      ),
+                      onTap: () => context.push('/profile/${profile['id']}'),
                       child: Text(
                         profile['nombre_artistico'] ?? 'Artista',
                         style: GoogleFonts.outfit(

@@ -55,6 +55,19 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     }
     
     try {
+      final myId = _supabase.auth.currentUser?.id;
+      
+      // Obtener lista de usuarios bloqueados
+      List<String> blockedIds = [];
+      if (myId != null) {
+        final blockedUsers = await _supabase
+            .from('usuarios_bloqueados')
+            .select('bloqueado_id')
+            .eq('usuario_id', myId)
+            .eq('activo', true);
+        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+      }
+      
       var queryBuilder = _supabase.from('profiles').select();
       
       if (query.isNotEmpty) {
@@ -71,7 +84,6 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       }
 
       // No mostrarse a uno mismo en búsquedas
-      final myId = _supabase.auth.currentUser?.id;
       if (myId != null) {
         queryBuilder = queryBuilder.neq('id', myId);
       }
@@ -81,11 +93,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       final response = await queryBuilder.range(from, to);
       
       if (mounted) {
+        // Filtrar usuarios bloqueados
+        final filteredResponse = response.where((u) => !blockedIds.contains(u['id'])).toList();
+        
         setState(() {
           if (isLoadMore) {
-            _results.addAll(response);
+            _results.addAll(filteredResponse);
           } else {
-            _results = response;
+            _results = filteredResponse;
           }
           
           if (response.length < _limit) {
@@ -125,12 +140,32 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     }
 
     try {
+      // Verificar si hay bloqueo (en cualquier dirección)
+      final blockData = await _supabase
+          .from('usuarios_bloqueados')
+          .select()
+          .or('and(usuario_id.eq.$myId,bloqueado_id.eq.$targetId),and(usuario_id.eq.$targetId,bloqueado_id.eq.$myId)')
+          .eq('activo', true)
+          .maybeSingle();
+
+      if (blockData != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No puedes conectar con este usuario'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
       // Verificar si ya existe una conexión
       final existing = await _supabase
-          .from('crews')
+          .from('connections')
           .select()
-          .eq('perfil_id', myId)
-          .eq('target_id', targetId)
+          .eq('usuario_id', myId)
+          .eq('conectado_id', targetId)
           .maybeSingle();
 
       if (existing != null) {
@@ -143,11 +178,10 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       }
 
       // Crear nueva solicitud
-      await _supabase.from('crews').insert({
-        'perfil_id': myId,
-        'target_id': targetId,
-        'estatus': 'pendiente',
-        'es_colaboracion': false,
+      await _supabase.from('connections').insert({
+        'usuario_id': myId,
+        'conectado_id': targetId,
+        'estatus': 'pending',
       });
 
       // Notificar al usuario objetivo

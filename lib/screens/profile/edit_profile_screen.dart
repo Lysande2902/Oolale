@@ -22,14 +22,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   final _bioController = TextEditingController();
   final _locationController = TextEditingController();
   final _instrumentController = TextEditingController(); 
-  final _gearController = TextEditingController(); 
+  final _gearController = TextEditingController();
+  final _experienceController = TextEditingController();
+  final _rateController = TextEditingController();
+  final _instagramController = TextEditingController();
+  final _youtubeController = TextEditingController();
+  final _spotifyController = TextEditingController();
   
   List<String> _gearList = [];
+  List<String> _selectedGenres = [];
+  Map<String, bool> _availability = {
+    'lunes': false,
+    'martes': false,
+    'miercoles': false,
+    'jueves': false,
+    'viernes': false,
+    'sabado': false,
+    'domingo': false,
+  };
   String? _avatarUrl;
   File? _imageFile;
   bool _isLoading = false;
   bool _isSaving = false;
   static const int MAX_GEAR = 8;
+  
+  final List<String> _availableGenres = [
+    'Rock', 'Pop', 'Jazz', 'Blues', 'Metal', 'Reggae',
+    'Salsa', 'Cumbia', 'Electrónica', 'Hip Hop', 'R&B',
+    'Country', 'Folk', 'Clásica', 'Latina', 'Funk',
+  ];
 
   @override
   void initState() {
@@ -54,11 +75,50 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _bioController.text = data['bio'] ?? '';
         _locationController.text = data['ubicacion'] ?? '';
         _instrumentController.text = data['instrumento_principal'] ?? '';
+        _experienceController.text = (data['years_experience'] ?? 0).toString();
+        _rateController.text = (data['base_rate'] ?? 0).toString();
         _avatarUrl = data['foto_perfil'];
+        
+        // Cargar redes sociales
+        if (data['social_links'] != null) {
+          final socialLinks = data['social_links'] as Map<String, dynamic>;
+          _instagramController.text = socialLinks['instagram'] ?? '';
+          _youtubeController.text = socialLinks['youtube'] ?? '';
+          _spotifyController.text = socialLinks['spotify'] ?? '';
+        }
+        
+        // Cargar disponibilidad
+        if (data['availability'] != null) {
+          final avail = data['availability'] as Map<String, dynamic>;
+          _availability = {
+            'lunes': avail['lunes'] ?? false,
+            'martes': avail['martes'] ?? false,
+            'miercoles': avail['miercoles'] ?? false,
+            'jueves': avail['jueves'] ?? false,
+            'viernes': avail['viernes'] ?? false,
+            'sabado': avail['sabado'] ?? false,
+            'domingo': avail['domingo'] ?? false,
+          };
+        }
+        
         _isLoading = false;
       });
 
-      // Cargar Gear (Mi Equipo) - si existe la tabla
+      // Cargar géneros musicales
+      try {
+        final genresData = await _supabase
+            .from('profile_genres')
+            .select('genre')
+            .eq('profile_id', userId);
+        
+        setState(() {
+          _selectedGenres = (genresData as List).map((g) => g['genre'].toString()).toList();
+        });
+      } catch (e) {
+        debugPrint('Genres not loaded: $e');
+      }
+
+      // Cargar Gear (Mi Equipo)
       try {
         final gearData = await _supabase
             .from('perfil_gear')
@@ -136,12 +196,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         debugPrint('SAVE: Avatar uploaded: $finalAvatarUrl');
       }
 
-      // 2. Actualizar perfil
+      // 2. Preparar social links
+      final socialLinks = {
+        'instagram': _instagramController.text.trim(),
+        'youtube': _youtubeController.text.trim(),
+        'spotify': _spotifyController.text.trim(),
+      };
+      
+      // Remover links vacíos
+      socialLinks.removeWhere((key, value) => value.isEmpty);
+
+      // 3. Actualizar perfil
       debugPrint('SAVE: Updating profile...');
-      debugPrint('SAVE: nombre_artistico: ${_nameController.text.trim()}');
-      debugPrint('SAVE: bio: ${_bioController.text.trim()}');
-      debugPrint('SAVE: ubicacion: ${_locationController.text.trim()}');
-      debugPrint('SAVE: instrumento_principal: ${_instrumentController.text.trim()}');
+      final yearsExp = int.tryParse(_experienceController.text.trim()) ?? 0;
+      final baseRate = double.tryParse(_rateController.text.trim()) ?? 0.0;
       
       final response = await _supabase.from('profiles').update({
         'nombre_artistico': _nameController.text.trim(),
@@ -149,36 +217,51 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'ubicacion': _locationController.text.trim(),
         'instrumento_principal': _instrumentController.text.trim(),
         'foto_perfil': finalAvatarUrl,
+        'years_experience': yearsExp,
+        'base_rate': baseRate,
+        'currency': 'MXN',
+        'availability': _availability,
+        'social_links': socialLinks,
       }).eq('id', userId).select();
 
       debugPrint('SAVE: Profile updated successfully: $response');
 
-      // 3. Actualizar Gear (Simplificado: Borrar y Reinsertar)
+      // 4. Actualizar géneros musicales
+      if (_selectedGenres.isNotEmpty) {
+        debugPrint('SAVE: Updating genres...');
+        // Borrar géneros existentes
+        await _supabase.from('profile_genres').delete().eq('profile_id', userId);
+        
+        // Insertar nuevos géneros
+        final genreRecords = _selectedGenres.map((genre) => {
+          'profile_id': userId,
+          'genre': genre,
+        }).toList();
+        
+        await _supabase.from('profile_genres').insert(genreRecords);
+        debugPrint('SAVE: Genres updated successfully');
+      }
+
+      // 5. Actualizar Gear (Simplificado: Borrar y Reinsertar)
       if (_gearList.isNotEmpty) {
         debugPrint('SAVE: Updating gear list...');
-        // Validar máximo de instrumentos
         if (_gearList.length > MAX_GEAR) {
           throw Exception('Máximo $MAX_GEAR instrumentos permitidos');
         }
         
-        // Primero borramos lo actual
         await _supabase.from('perfil_gear').delete().eq('perfil_id', userId);
         
-        // Luego insertamos lo nuevo (Buscando o creando en el catálogo)
         for (var name in _gearList) {
-          // Buscamos si existe en el catálogo
           var catalogItem = await _supabase.from('gear_catalog').select().ilike('nombre', name).maybeSingle();
           
           String gearId;
           if (catalogItem == null) {
-            // Si no existe, lo creamos
             final newItem = await _supabase.from('gear_catalog').insert({'nombre': name}).select().single();
             gearId = newItem['id'].toString();
           } else {
             gearId = catalogItem['id'].toString();
           }
           
-          // Insertamos la relación
           await _supabase.from('perfil_gear').insert({
             'perfil_id': userId,
             'gear_id': gearId,
@@ -186,7 +269,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         }
         debugPrint('SAVE: Gear updated successfully');
       } else {
-        // Si no hay instrumentos, limpiar los existentes
         await _supabase.from('perfil_gear').delete().eq('perfil_id', userId);
       }
 
@@ -263,7 +345,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 30),
                 _buildSectionTitle('Bio y Requisitos'),
                 _buildTextField(_bioController, 'Sobre ti...', Icons.notes, maxLines: 3),
+                const SizedBox(height: 30),
+                _buildSectionTitle('Géneros Musicales'),
+                _buildGenresSection(),
+                const SizedBox(height: 30),
+                _buildSectionTitle('Experiencia y Disponibilidad'),
+                _buildTextField(_experienceController, 'Años de experiencia', Icons.work_outline),
                 const SizedBox(height: 20),
+                _buildAvailabilitySection(),
+                const SizedBox(height: 30),
+                _buildSectionTitle('Tarifa Base (MXN)'),
+                _buildTextField(_rateController, 'Precio por evento', Icons.attach_money),
+                const SizedBox(height: 30),
+                _buildSectionTitle('Redes Sociales'),
+                _buildTextField(_instagramController, 'Instagram (URL)', Icons.camera_alt),
+                const SizedBox(height: 20),
+                _buildTextField(_youtubeController, 'YouTube (URL)', Icons.play_circle_outline),
+                const SizedBox(height: 20),
+                _buildTextField(_spotifyController, 'Spotify (URL)', Icons.music_note),
+                const SizedBox(height: 30),
                 _buildSectionTitle('Mis Instrumentos (Máx. 8)'),
                 _buildGearSection(),
                 const SizedBox(height: 40),
@@ -319,6 +419,114 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Text(title, style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 13, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildGenresSection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Selecciona los géneros que tocas',
+            style: GoogleFonts.outfit(
+              color: ThemeColors.secondaryText(context),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _availableGenres.map((genre) {
+              final isSelected = _selectedGenres.contains(genre);
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (isSelected) {
+                      _selectedGenres.remove(genre);
+                    } else {
+                      _selectedGenres.add(genre);
+                    }
+                  });
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected 
+                        ? AppConstants.primaryColor 
+                        : Theme.of(context).scaffoldBackgroundColor,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSelected 
+                          ? AppConstants.primaryColor 
+                          : ThemeColors.divider(context),
+                    ),
+                  ),
+                  child: Text(
+                    genre,
+                    style: GoogleFonts.outfit(
+                      color: isSelected 
+                          ? Colors.black 
+                          : ThemeColors.primaryText(context),
+                      fontSize: 12,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAvailabilitySection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Días disponibles',
+            style: GoogleFonts.outfit(
+              color: ThemeColors.secondaryText(context),
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ..._availability.keys.map((day) {
+            return CheckboxListTile(
+              title: Text(
+                day.substring(0, 1).toUpperCase() + day.substring(1),
+                style: GoogleFonts.outfit(
+                  color: ThemeColors.primaryText(context),
+                  fontSize: 14,
+                ),
+              ),
+              value: _availability[day],
+              activeColor: AppConstants.primaryColor,
+              onChanged: (value) {
+                setState(() {
+                  _availability[day] = value ?? false;
+                });
+              },
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+            );
+          }).toList(),
+        ],
+      ),
     );
   }
 

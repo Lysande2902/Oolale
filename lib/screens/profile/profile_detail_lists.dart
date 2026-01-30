@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
@@ -188,9 +189,10 @@ class _ProfileFollowersScreenState extends State<ProfileFollowersScreen> {
 
       // Unir con profiles para obtener info del seguidor
       final response = await _supabase
-          .from('crews')
-          .select('*, profiles:perfil_id(*)') 
-          .eq('target_id', widget.userId)
+          .from('connections')
+          .select('*, profiles:usuario_id(*)') 
+          .eq('conectado_id', widget.userId)
+          .eq('estatus', 'accepted')
           .range(from, to);
 
       if (mounted) {
@@ -239,13 +241,13 @@ class _ProfileFollowersScreenState extends State<ProfileFollowersScreen> {
 
                     return ListTile(
                       leading: CircleAvatar(
-                        backgroundImage: profile['avatar_url'] != null ? NetworkImage(profile['avatar_url']) : null,
-                        child: profile['avatar_url'] == null ? const Icon(Icons.person) : null,
+                        backgroundImage: profile['foto_perfil'] != null ? NetworkImage(profile['foto_perfil']) : null,
+                        child: profile['foto_perfil'] == null ? const Icon(Icons.person) : null,
                       ),
                       title: Text(profile['nombre_artistico'] ?? 'Usuario', style: GoogleFonts.outfit(color: Colors.white)),
                       subtitle: Text(profile['rol_principal'] ?? 'Musico', style: GoogleFonts.outfit(color: Colors.grey)),
                       onTap: () {
-                         Navigator.push(context, MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: profile['id'])));
+                         context.push('/profile/${profile['id']}');
                       },
                     );
                   },

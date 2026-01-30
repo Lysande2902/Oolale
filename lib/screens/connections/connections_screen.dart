@@ -48,18 +48,18 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
 
     try {
       final activeData = await _supabase
-          .from('crews')
-          .select('*, target:profiles!target_id(id, nombre_artistico, avatar_url, instrumento_principal)')
-          .eq('perfil_id', myId)
-          .eq('estatus', 'activo')
+          .from('connections')
+          .select('*, target:profiles!connections_conectado_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .eq('usuario_id', myId)
+          .eq('estatus', 'accepted')
           .order('id', ascending: false)
           .range(0, _pageSize - 1);
 
       final pendingData = await _supabase
-          .from('crews')
-          .select('*, requester:profiles!perfil_id(id, nombre_artistico, avatar_url, instrumento_principal)')
-          .eq('target_id', myId)
-          .eq('estatus', 'pendiente')
+          .from('connections')
+          .select('*, requester:profiles!connections_usuario_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .eq('conectado_id', myId)
+          .eq('estatus', 'pending')
           .order('id', ascending: false)
           .range(0, _pageSize - 1);
 
@@ -98,10 +98,10 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
       final start = nextPage * _pageSize;
       final end = start + _pageSize - 1;
       final data = await _supabase
-          .from('crews')
-          .select('*, target:profiles!target_id(id, nombre_artistico, avatar_url, instrumento_principal)')
-          .eq('perfil_id', myId)
-          .eq('estatus', 'activo')
+          .from('connections')
+          .select('*, target:profiles!connections_conectado_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .eq('usuario_id', myId)
+          .eq('estatus', 'accepted')
           .order('id', ascending: false)
           .range(start, end);
       if (!mounted) return;
@@ -126,10 +126,10 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
       final start = nextPage * _pageSize;
       final end = start + _pageSize - 1;
       final data = await _supabase
-          .from('crews')
-          .select('*, requester:profiles!perfil_id(id, nombre_artistico, avatar_url, instrumento_principal)')
-          .eq('target_id', myId)
-          .eq('estatus', 'pendiente')
+          .from('connections')
+          .select('*, requester:profiles!connections_usuario_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .eq('conectado_id', myId)
+          .eq('estatus', 'pending')
           .order('id', ascending: false)
           .range(start, end);
       if (!mounted) return;
@@ -148,12 +148,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
     try {
       if (action == 'accept') {
         await _supabase
-            .from('crews')
-            .update({'estatus': 'activo'})
+            .from('connections')
+            .update({'estatus': 'accepted'})
             .eq('id', crewId);
       } else {
         await _supabase
-            .from('crews')
+            .from('connections')
             .delete()
             .eq('id', crewId);
       }
@@ -178,7 +178,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
 
   Future<void> _removeConnection(int crewId) async {
     try {
-      await _supabase.from('crews').delete().eq('id', crewId);
+      await _supabase.from('connections').delete().eq('id', crewId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Conexión eliminada')),
@@ -209,10 +209,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
               IconButton(
                 icon: const Icon(Icons.person_add_outlined),
                 onPressed: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const ConnectionRequestsScreen()),
-                  );
+                  await context.push('/connection-requests');
                   _loadConnections(); // Recargar después de gestionar solicitudes
                 },
               ),

@@ -11,7 +11,8 @@ import '../../models/post.dart';
 import 'package:intl/intl.dart';
 import '../events/events_screen.dart';
 import '../profile/profile_screen.dart';
-import '../profile/public_profile_screen.dart';
+import '../profile/unified_profile_screen.dart';
+import '../reports/report_content_screen.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -141,6 +142,7 @@ class _StreamViewState extends State<_StreamView> {
   StreamSubscription? _postSubscription;
   String? _artisticName;
   String? _profileAvatar;
+  int _unreadNotifications = 0; // Contador de notificaciones no leídas
   
   // Rotación
   Timer? _featuredGigTimer;
@@ -156,6 +158,7 @@ class _StreamViewState extends State<_StreamView> {
     super.initState();
     _loadStreamData();
     _startPostsAutoRefresh();
+    _loadUnreadNotifications(); // Cargar contador de notificaciones
   }
 
   @override
@@ -172,25 +175,73 @@ class _StreamViewState extends State<_StreamView> {
     _postsRefreshTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
       if (mounted) {
         _loadPosts();
+        _loadUnreadNotifications(); // También actualizar notificaciones
       }
     });
   }
 
-  Future<void> _loadPosts() async {
+  Future<void> _loadUnreadNotifications() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
     try {
+      final data = await _supabase
+          .from('notifications')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('leido', false);
+
+      if (mounted) {
+        setState(() {
+          _unreadNotifications = data.length;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error cargando notificaciones no leídas: $e');
+    }
+  }
+
+  Future<void> _loadPosts() async {
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      // Obtener lista de usuarios bloqueados
+      final blockedUsers = await _supabase
+          .from('usuarios_bloqueados')
+          .select('bloqueado_id')
+          .eq('usuario_id', myId)
+          .eq('activo', true);
+      
+      final blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+
       // Cargar 20 posts ALEATORIOS en lugar de cronológicos
       final postsData = await _supabase
           .rpc('get_random_posts', params: {'limit_count': 20});
 
       if (mounted) {
+        // Filtrar posts de usuarios bloqueados
+        final filteredPosts = (postsData as List)
+            .where((p) => !blockedIds.contains(p['author_id']))
+            .map((p) => Post.fromJson(p))
+            .toList();
+
         setState(() {
-          _posts = (postsData as List).map((p) => Post.fromJson(p)).toList();
+          _posts = filteredPosts;
         });
       }
     } catch (e) {
       debugPrint('Error cargando posts: $e');
       // Fallback: si no existe la función RPC, usar query normal
       try {
+        final blockedUsers = await _supabase
+            .from('usuarios_bloqueados')
+            .select('bloqueado_id')
+            .eq('usuario_id', myId)
+            .eq('activo', true);
+        
+        final blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+
         final postsData = await _supabase
             .from('posts')
             .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, foto_perfil)')
@@ -198,8 +249,13 @@ class _StreamViewState extends State<_StreamView> {
             .limit(20);
 
         if (mounted) {
+          final filteredPosts = (postsData as List)
+              .where((p) => !blockedIds.contains(p['author_id']))
+              .map((p) => Post.fromJson(p))
+              .toList();
+
           setState(() {
-            _posts = (postsData as List).map((p) => Post.fromJson(p)).toList();
+            _posts = filteredPosts;
           });
         }
       } catch (e2) {
@@ -245,7 +301,19 @@ class _StreamViewState extends State<_StreamView> {
           .eq('verificado', true)
           .limit(10);
 
-      // 4. Últimos Posts (20 aleatorios)
+      // 4. Obtener lista de usuarios bloqueados
+      List<String> blockedIds = [];
+      if (userId != null) {
+        final blockedUsers = await _supabase
+            .from('usuarios_bloqueados')
+            .select('bloqueado_id')
+            .eq('usuario_id', userId)
+            .eq('activo', true);
+        
+        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+      }
+
+      // 5. Últimos Posts (20 aleatorios, sin bloqueados)
       List<dynamic> postsData;
       try {
         // Intentar cargar posts aleatorios
@@ -262,6 +330,12 @@ class _StreamViewState extends State<_StreamView> {
       }
 
       if (mounted) {
+        // Filtrar posts de usuarios bloqueados
+        final filteredPosts = (postsData as List)
+            .where((p) => !blockedIds.contains(p['author_id']))
+            .map((p) => Post.fromJson(p))
+            .toList();
+
         setState(() {
           // Mezclar un poco para que sea dinámico
           _urgentGigs = List.from(urgentGigsResponse)..shuffle();
@@ -274,7 +348,7 @@ class _StreamViewState extends State<_StreamView> {
              _trendingGigs = _urgentGigs;
           }
 
-          _posts = (postsData as List).map((p) => Post.fromJson(p)).toList();
+          _posts = filteredPosts;
           _isLoading = false;
         });
         
@@ -396,17 +470,49 @@ class _StreamViewState extends State<_StreamView> {
                   const SizedBox(width: 15),
                   Row(
                     children: [
-                      // Notificaciones
+                      // Notificaciones con badge
                       GestureDetector(
-                        onTap: () => context.push('/notifications'),
-                        child: Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).cardColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
-                          ),
-                          child: Icon(Icons.notifications_outlined, color: AppConstants.primaryColor, size: 22),
+                        onTap: () async {
+                          await context.push('/notifications');
+                          _loadUnreadNotifications(); // Recargar después de ver notificaciones
+                        },
+                        child: Stack(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).cardColor,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Theme.of(context).dividerColor.withOpacity(0.1)),
+                              ),
+                              child: Icon(Icons.notifications_outlined, color: AppConstants.primaryColor, size: 22),
+                            ),
+                            if (_unreadNotifications > 0)
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 18,
+                                    minHeight: 18,
+                                  ),
+                                  child: Text(
+                                    _unreadNotifications > 9 ? '9+' : _unreadNotifications.toString(),
+                                    style: GoogleFonts.outfit(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -794,14 +900,16 @@ class _StreamViewState extends State<_StreamView> {
     }
 
     return Column(
-      children: _posts.map((post) => _PostCard(post: post)).toList(),
+      children: _posts.map((post) => _PostCard(post: post, myId: _supabase.auth.currentUser?.id)).toList(),
     );
   }
 }
 
 class _PostCard extends StatelessWidget {
   final Post post;
-  const _PostCard({required this.post});
+  final String? myId;
+  
+  const _PostCard({required this.post, this.myId});
 
   @override
   Widget build(BuildContext context) {
@@ -820,10 +928,7 @@ class _PostCard extends StatelessWidget {
             onTap: () {
               final myId = Supabase.instance.client.auth.currentUser?.id;
               if (post.authorId != myId) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => PublicProfileScreen(userId: post.authorId)),
-                );
+                context.push('/profile/${post.authorId}');
               }
             },
             child: Row(
@@ -846,6 +951,39 @@ class _PostCard extends StatelessWidget {
                   ],
                 ),
               ),
+              // Menú de opciones (solo mostrar si NO es tu propio post)
+              if (post.authorId != myId)
+                PopupMenuButton<String>(
+                  icon: Icon(Icons.more_vert, color: ThemeColors.iconSecondary(context), size: 20),
+                  color: Theme.of(context).cardColor,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  onSelected: (value) {
+                    if (value == 'report') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ReportContentScreen(
+                            contentType: 'post',
+                            contentId: post.id,
+                            contentTitle: 'Post de ${post.authorName}',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    PopupMenuItem(
+                      value: 'report',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.flag_outlined, color: Colors.orange, size: 20),
+                          const SizedBox(width: 12),
+                          Text('Reportar post', style: GoogleFonts.outfit(color: Colors.orange)),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),

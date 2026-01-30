@@ -46,9 +46,18 @@ class _MessagesScreenState extends State<MessagesScreen> {
     if (userId == null) return;
 
     try {
+      // Obtener lista de usuarios bloqueados
+      final blockedUsers = await _supabase
+          .from('usuarios_bloqueados')
+          .select('bloqueado_id')
+          .eq('usuario_id', userId)
+          .eq('activo', true);
+      
+      final blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+
       final data = await _supabase
           .from('intercom')
-          .select('*, profiles!intercom_remitente_id_fkey(nombre_artistico, avatar_url)')
+          .select('*, profiles!intercom_remitente_id_fkey(nombre_artistico, foto_perfil)')
           .or('remitente_id.eq.$userId,destinatario_id.eq.$userId')
           .order('created_at', ascending: false);
 
@@ -59,11 +68,14 @@ class _MessagesScreenState extends State<MessagesScreen> {
             ? msg['destinatario_id'] 
             : msg['remitente_id'];
         
+        // Filtrar usuarios bloqueados
+        if (blockedIds.contains(otherId)) continue;
+        
         if (!chatGroups.containsKey(otherId)) {
           chatGroups[otherId] = Conversation(
             interlocutorId: otherId,
             interlocutorName: msg['profiles']?['nombre_artistico'] ?? 'Artista',
-            interlocutorPhoto: msg['profiles']?['avatar_url'],
+            interlocutorPhoto: msg['profiles']?['foto_perfil'],
             lastMessage: msg['riff_text'] ?? '',
             lastDate: DateTime.parse(msg['created_at']),
             unreadCount: (msg['remitente_id'] != userId && !msg['leido']) ? 1 : 0,

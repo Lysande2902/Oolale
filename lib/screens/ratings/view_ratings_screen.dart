@@ -44,6 +44,8 @@ class _ViewRatingsScreenState extends State<ViewRatingsScreen> {
         if (mounted) {
           setState(() {
             _ratings = [];
+            _averageRating = 0.0;
+            _totalRatings = 0;
             _isLoading = false;
           });
         }
@@ -51,7 +53,8 @@ class _ViewRatingsScreenState extends State<ViewRatingsScreen> {
       }
 
       final ratings = data.map((r) => r['puntuacion'] as int).toList();
-      final average = ratings.reduce((a, b) => a + b) / ratings.length;
+      // FIX: Prevenir división por cero
+      final average = ratings.isEmpty ? 0.0 : ratings.reduce((a, b) => a + b) / ratings.length;
 
       if (mounted) {
         setState(() {
@@ -144,8 +147,10 @@ class _ViewRatingsScreenState extends State<ViewRatingsScreen> {
                 children: [
                   Row(
                     children: List.generate(5, (index) {
+                      // FIX: Prevenir error con rating 0
+                      final floorRating = _averageRating > 0 ? _averageRating.floor() : 0;
                       return Icon(
-                        index < _averageRating.floor() ? Icons.star : Icons.star_border,
+                        index < floorRating ? Icons.star : Icons.star_border,
                         color: AppConstants.primaryColor,
                         size: 20,
                       );

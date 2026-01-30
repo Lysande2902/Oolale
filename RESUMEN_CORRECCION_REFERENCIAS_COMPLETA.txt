@@ -1,0 +1,104 @@
+╔══════════════════════════════════════════════════════════════════════════╗
+║                  CORRECCIÓN COMPLETA: SISTEMA DE REFERENCIAS             ║
+║                         30 de enero de 2026                              ║
+╚══════════════════════════════════════════════════════════════════════════╝
+
+📋 PROBLEMA IDENTIFICADO
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Error SQL: "syntax error at or near $" en FIX_REPORTES_REFERENCIAS.sql
+Causa: Uso incorrecto de delimitador en bloques DO ($ en lugar de $$)
+Impacto: Script no se podía ejecutar en Supabase/PostgreSQL
+
+🔧 SOLUCIONES APLICADAS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. SQL - FIX_REPORTES_REFERENCIAS.sql
+   ✅ Corregido: DO $ → DO $$
+   ✅ Agregada columna 'estatus' a tabla reportes
+   ✅ Columnas antiguas ahora son NULLABLE
+   ✅ Script ejecutado exitosamente
+
+2. DART - ratings_screen.dart
+   ✅ Línea 60: para_usuario_id → evaluado_id
+   ✅ Query de referencias actualizado
+
+3. SQL - QUERIES_PRACTICAS.sql
+   ✅ Query 3.4: Actualizado INSERT de referencias
+   ✅ Query 3.5: Actualizado SELECT de referencias
+   ✅ Usa nuevas columnas: evaluador_id, evaluado_id
+
+📊 ESTRUCTURA ACTUALIZADA
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+TABLA: referencias
+┌─────────────────┬──────────┬────────────────────────────────┐
+│ Columna         │ Tipo     │ Descripción                    │
+├─────────────────┼──────────┼────────────────────────────────┤
+│ evaluador_id    │ UUID     │ Quien deja la referencia       │
+│ evaluado_id     │ UUID     │ Quien recibe la referencia     │
+│ puntuacion      │ INTEGER  │ Calificación 1-5               │
+│ comentario      │ TEXT     │ Comentario opcional            │
+│ tipo_interaccion│ VARCHAR  │ evento, colaboracion, etc.     │
+│ verificado      │ BOOLEAN  │ Si está verificada             │
+└─────────────────┴──────────┴────────────────────────────────┘
+
+TABLA: reportes (NUEVA COLUMNA)
+┌─────────────────┬──────────┬────────────────────────────────┐
+│ Columna         │ Tipo     │ Descripción                    │
+├─────────────────┼──────────┼────────────────────────────────┤
+│ estatus         │ VARCHAR  │ pendiente, en_revision,        │
+│                 │          │ resuelto, rechazado            │
+└─────────────────┴──────────┴────────────────────────────────┘
+
+TABLA: calificaciones (SIN CAMBIOS)
+┌─────────────────┬──────────┬────────────────────────────────┐
+│ Columna         │ Tipo     │ Descripción                    │
+├─────────────────┼──────────┼────────────────────────────────┤
+│ de_usuario_id   │ UUID     │ Quien califica                 │
+│ para_usuario_id │ UUID     │ Quien recibe calificación      │
+│ estrellas       │ INTEGER  │ Calificación 1-5               │
+└─────────────────┴──────────┴────────────────────────────────┘
+
+📁 ARCHIVOS MODIFICADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ oolale_mobile/FIX_REPORTES_REFERENCIAS.sql
+✅ oolale_mobile/lib/screens/portfolio/ratings_screen.dart
+✅ 06_BASE_DATOS_SQL/QUERIES_PRACTICAS.sql
+
+📁 ARCHIVOS CREADOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📄 oolale_mobile/CORRECCION_REFERENCIAS_EVALUADOR_ID.md
+📄 oolale_mobile/RESUMEN_CORRECCION_REFERENCIAS_COMPLETA.txt
+
+✅ ARCHIVOS YA CORRECTOS (NO MODIFICADOS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ lib/screens/ratings/leave_rating_screen.dart
+✅ lib/screens/ratings/view_ratings_screen.dart
+✅ lib/services/event_service.dart
+✅ lib/screens/portfolio/leave_rating_screen.dart (usa calificaciones)
+
+🎯 VERIFICACIÓN
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Script SQL ejecutado sin errores
+✅ Políticas RLS verificadas
+✅ Código Dart actualizado
+✅ Queries de ejemplo actualizados
+✅ Documentación creada
+
+🚀 PRÓXIMOS PASOS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1. Probar funcionalidad de referencias en la app
+2. Verificar que se guarden correctamente
+3. Opcional: Eliminar columnas antiguas si todo funciona bien
+4. Actualizar diagramas de base de datos
+
+📝 NOTAS IMPORTANTES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Las columnas antiguas son NULLABLE (compatibilidad)
+• Los datos existentes NO se pierden
+• La app usa exclusivamente las nuevas columnas
+• Tabla 'calificaciones' mantiene sus nombres originales
+
+╔══════════════════════════════════════════════════════════════════════════╗
+║                         ✅ CORRECCIÓN COMPLETADA                         ║
+╚══════════════════════════════════════════════════════════════════════════╝

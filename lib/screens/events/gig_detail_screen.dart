@@ -8,6 +8,7 @@ import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 import '../../models/event.dart';
 import '../../services/notification_service.dart';
+import '../reports/report_content_screen.dart';
 
 class GigDetailScreen extends StatefulWidget {
   final int gigId;
@@ -58,15 +59,32 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
 
       final lineupData = await _supabase
           .from('gig_lineup')
-          .select('*, profiles(id, nombre_artistico, avatar_url)')
+          .select('*, profiles(id, nombre_artistico, foto_perfil)')
           .eq('gig_id', widget.gigId);
 
+      // Obtener lista de usuarios bloqueados
+      List<String> blockedIds = [];
+      if (myId != null) {
+        final blockedUsers = await _supabase
+            .from('usuarios_bloqueados')
+            .select('bloqueado_id')
+            .eq('usuario_id', myId)
+            .eq('activo', true);
+        
+        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+      }
+
       if (mounted) {
+        // Filtrar usuarios bloqueados del lineup
+        final filteredLineup = (lineupData as List)
+            .where((l) => !blockedIds.contains(l['perfil_id']))
+            .toList();
+
         setState(() {
           _gig = Evento.fromJson(gigData);
           _organizer = organizer;
-          _lineup = lineupData;
-          _alreadyInLineup = lineupData.any((l) => l['perfil_id'] == myId);
+          _lineup = filteredLineup;
+          _alreadyInLineup = filteredLineup.any((l) => l['perfil_id'] == myId);
           _isLoading = false;
         });
       }
@@ -85,6 +103,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
 
     setState(() => _isPostulating = true);
     try {
+      // Insertar postulación
       await _supabase.from('gig_lineup').insert({
         'gig_id': widget.gigId,
         'perfil_id': myId,
@@ -92,18 +111,28 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
         'asistencia_confirmada': false,
       });
 
-      // Notificar al organizador
-      // TODO: Implementar notificación de postulación a evento
-      /*
+      // Crear notificación de postulación a evento
       if (_gig?.organizadorId != null) {
-        await NotificationService.createGigPostulationNotification(
-          organizerId: _gig!.organizadorId!,
-          gigId: widget.gigId,
-          gigTitle: _gig!.titulo,
-          senderId: myId,
-        );
+        try {
+          final myProfile = await _supabase
+              .from('profiles')
+              .select('nombre_artistico')
+              .eq('id', myId)
+              .single();
+
+          await _supabase.from('notifications').insert({
+            'user_id': _gig!.organizadorId,
+            'tipo': 'gig_postulation',
+            'titulo': 'Nueva postulación',
+            'mensaje': '${myProfile['nombre_artistico']} mostró interés en tu evento "${_gig!.titulo}"',
+            'leido': false,
+            'data': {'sender_id': myId, 'gig_id': widget.gigId},
+          });
+        } catch (notifError) {
+          debugPrint('Error creando notificación: $notifError');
+          // No bloquear la funcionalidad principal si falla la notificación
+        }
       }
-      */
 
       if (mounted) {
         messenger.showSnackBar(
@@ -174,20 +203,69 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
   }
 
   Widget _buildAppBar() {
+    final myId = _supabase.auth.currentUser?.id;
+    final isMyEvent = _gig?.organizadorId == myId;
+
     return Positioned(
       top: 40,
       left: 10,
       right: 10,
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween, // Separar botones
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           IconButton(
             icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
             onPressed: () => Navigator.pop(context),
           ),
-          IconButton(
-            icon: Icon(Icons.share, color: ThemeColors.icon(context)),
-            onPressed: _shareGig,
+          Row(
+            children: [
+              // Botón de menú (sin opción de reportar si es tu propio evento)
+              PopupMenuButton<String>(
+                icon: Icon(Icons.more_vert, color: ThemeColors.icon(context)),
+                color: Theme.of(context).cardColor,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                onSelected: (value) {
+                  if (value == 'report') {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => ReportContentScreen(
+                          contentType: 'event',
+                          contentId: widget.gigId.toString(),
+                          contentTitle: _gig!.titulo,
+                        ),
+                      ),
+                    );
+                  } else if (value == 'share') {
+                    _shareGig();
+                  }
+                },
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'share',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.share, color: AppConstants.primaryColor, size: 20),
+                        const SizedBox(width: 12),
+                        Text('Compartir', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context))),
+                      ],
+                    ),
+                  ),
+                  // Solo mostrar opción de reportar si NO es tu evento
+                  if (!isMyEvent)
+                    PopupMenuItem(
+                      value: 'report',
+                      child: Row(
+                        children: [
+                          const Icon(Icons.flag_outlined, color: Colors.orange, size: 20),
+                          const SizedBox(width: 12),
+                          Text('Reportar evento', style: GoogleFonts.outfit(color: Colors.orange)),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
@@ -332,8 +410,8 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
             CircleAvatar(
               radius: 20,
               backgroundColor: AppConstants.bgDarkAlt,
-              backgroundImage: _organizer?['avatar_url'] != null ? NetworkImage(_organizer!['avatar_url']) : null,
-              child: _organizer?['avatar_url'] == null 
+              backgroundImage: _organizer?['foto_perfil'] != null ? NetworkImage(_organizer!['foto_perfil']) : null,
+              child: _organizer?['foto_perfil'] == null 
                 ? const Icon(Icons.person, color: Colors.grey, size: 20) : null,
             ),
             const SizedBox(width: 15),
@@ -377,8 +455,8 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
                   child: CircleAvatar(
                     radius: 25,
                     backgroundColor: AppConstants.bgDarkAlt,
-                    backgroundImage: artist['avatar_url'] != null ? NetworkImage(artist['avatar_url']) : null,
-                    child: artist['avatar_url'] == null 
+                    backgroundImage: artist['foto_perfil'] != null ? NetworkImage(artist['foto_perfil']) : null,
+                    child: artist['foto_perfil'] == null 
                       ? const Icon(Icons.person, color: Colors.grey) : null,
                   ),
                 ),

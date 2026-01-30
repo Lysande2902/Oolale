@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
@@ -28,11 +29,16 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     if (myId == null) return;
 
     try {
+      debugPrint('🔍 Cargando usuarios bloqueados para: $myId');
+      
       final data = await _supabase
-          .from('bloqueos')
-          .select('*, bloqueado:profiles!bloqueos_bloqueado_id_fkey(id, nombre_artistico, foto_perfil, rol_principal, ubicacion)')
-          .eq('bloqueador_id', myId)
+          .from('usuarios_bloqueados')
+          .select('*, bloqueado:profiles!usuarios_bloqueados_bloqueado_id_fkey(id, nombre_artistico, foto_perfil, rol_principal, ubicacion)')
+          .eq('usuario_id', myId)
+          .eq('activo', true)
           .order('created_at', ascending: false);
+
+      debugPrint('📦 Usuarios bloqueados encontrados: ${data.length}');
 
       if (mounted) {
         setState(() {
@@ -41,7 +47,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error cargando usuarios bloqueados: $e');
+      debugPrint('❌ Error cargando usuarios bloqueados: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -50,16 +56,16 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppConstants.cardColor,
-        title: Text('Desbloquear usuario', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Desbloquear usuario', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontWeight: FontWeight.bold)),
         content: Text(
           '¿Estás seguro que quieres desbloquear a $userName?',
-          style: GoogleFonts.outfit(color: Colors.white70),
+          style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar', style: GoogleFonts.outfit(color: Colors.white54)),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -76,7 +82,18 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     if (confirm != true) return;
 
     try {
-      await _supabase.from('bloqueos').delete().eq('id', blockId);
+      debugPrint('🔓 Desbloqueando usuario: $blockId');
+      
+      // Marcar como inactivo en lugar de eliminar
+      await _supabase
+          .from('usuarios_bloqueados')
+          .update({
+            'activo': false,
+            'desbloqueado_en': DateTime.now().toIso8601String(),
+          })
+          .eq('id', blockId);
+
+      debugPrint('✅ Usuario desbloqueado exitosamente');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -96,7 +113,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         _loadBlockedUsers(); // Recargar lista
       }
     } catch (e) {
-      debugPrint('Error desbloqueando usuario: $e');
+      debugPrint('❌ Error desbloqueando usuario: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -190,12 +207,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         children: [
           // Avatar
           GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => PublicProfileScreen(userId: user['id']),
-              ),
-            ),
+            onTap: () => context.push('/profile/${user['id']}'),
             child: Container(
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
@@ -220,12 +232,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 GestureDetector(
-                  onTap: () => Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => PublicProfileScreen(userId: user['id']),
-                    ),
-                  ),
+                  onTap: () => context.push('/profile/${user['id']}'),
                   child: Text(
                     user['nombre_artistico'] ?? 'Artista',
                     style: GoogleFonts.outfit(

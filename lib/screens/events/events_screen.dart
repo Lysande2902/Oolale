@@ -74,6 +74,20 @@ class _EventsScreenState extends State<EventsScreen> {
     }
 
     try {
+      final myId = _supabase.auth.currentUser?.id;
+      
+      // Obtener lista de usuarios bloqueados
+      List<String> blockedIds = [];
+      if (myId != null) {
+        final blockedUsers = await _supabase
+            .from('usuarios_bloqueados')
+            .select('bloqueado_id')
+            .eq('usuario_id', myId)
+            .eq('activo', true);
+        
+        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+      }
+
       var queryBuilder = _supabase.from('gigs').select();
       
       // Búsqueda amplia
@@ -115,7 +129,12 @@ class _EventsScreenState extends State<EventsScreen> {
       }
           
       if (mounted) {
-        final newEvents = data.map((e) => Evento.fromJson(e)).toList();
+        // Filtrar eventos de usuarios bloqueados
+        final filteredData = (data as List)
+            .where((e) => !blockedIds.contains(e['organizador_id']))
+            .toList();
+
+        final newEvents = filteredData.map((e) => Evento.fromJson(e)).toList();
         final now = DateTime.now();
         final today = DateTime(now.year, now.month, now.day);
         final weekEnd = today.add(const Duration(days: 7));

@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:oolale_mobile/models/portfolio_media.dart';
 import 'package:oolale_mobile/config/constants.dart';
+import 'package:oolale_mobile/services/media_service.dart';
+import 'package:oolale_mobile/utils/connectivity_helper.dart';
 import '../../config/theme_colors.dart';
 import 'upload_media_screen.dart';
 import 'media_detail_screen.dart';
@@ -18,6 +21,7 @@ class PortfolioScreen extends StatefulWidget {
 
 class _PortfolioScreenState extends State<PortfolioScreen> {
   final _supabase = Supabase.instance.client;
+  late final MediaService _mediaService;
   List<PortfolioMedia> _mediaList = [];
   bool _isLoading = true;
   String _selectedFilter = 'todos';
@@ -25,10 +29,17 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   @override
   void initState() {
     super.initState();
+    _mediaService = MediaService(_supabase);
     _loadMedia();
   }
 
   Future<void> _loadMedia() async {
+    // Check connectivity first
+    if (!await ConnectivityHelper.checkAndAlert(context)) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
+
     try {
       setState(() => _isLoading = true);
       
@@ -61,6 +72,208 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
     return _mediaList.where((m) => m.tipo.toLowerCase() == _selectedFilter).toList();
   }
 
+  Future<void> _showMediaOptions(PortfolioMedia media) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 12),
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: ThemeColors.divider(context),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 20),
+            ListTile(
+              leading: const Icon(Icons.edit, color: AppConstants.primaryColor),
+              title: Text('Editar título', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context))),
+              onTap: () => Navigator.pop(context, 'edit'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete, color: Colors.red),
+              title: Text('Eliminar', style: GoogleFonts.outfit(color: Colors.red)),
+              onTap: () => Navigator.pop(context, 'delete'),
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+
+    if (result == 'edit') {
+      _showEditDialog(media);
+    } else if (result == 'delete') {
+      _showDeleteConfirmation(media);
+    }
+  }
+
+  Future<void> _showEditDialog(PortfolioMedia media) async {
+    final controller = TextEditingController(text: media.titulo);
+    
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('Editar título', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context))),
+        content: TextField(
+          controller: controller,
+          style: GoogleFonts.outfit(color: ThemeColors.primaryText(context)),
+          decoration: InputDecoration(
+            hintText: 'Nuevo título',
+            hintStyle: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: BorderSide(color: ThemeColors.divider(context)),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppConstants.primaryColor),
+            ),
+          ),
+          maxLength: 100,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('Guardar', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true && controller.text.isNotEmpty) {
+      await _updateMedia(media.id, controller.text);
+    }
+  }
+
+  Future<void> _showDeleteConfirmation(PortfolioMedia media) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text('¿Eliminar archivo?', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context))),
+        content: Text(
+          'Esta acción no se puede deshacer. El archivo "${media.titulo}" será eliminado permanentemente.',
+          style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text('Eliminar', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (result == true) {
+      await _deleteMedia(media);
+    }
+  }
+
+  Future<void> _updateMedia(int mediaId, String newTitle) async {
+    try {
+      await _mediaService.updatePortfolioMedia(mediaId, newTitle);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Título actualizado', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadMedia();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar: $e', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteMedia(PortfolioMedia media) async {
+    // Check connectivity first
+    if (!await ConnectivityHelper.checkAndAlert(context)) {
+      return;
+    }
+
+    try {
+      // Show loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                ),
+                const SizedBox(width: 12),
+                Text('Eliminando...', style: GoogleFonts.outfit()),
+              ],
+            ),
+            duration: const Duration(seconds: 10),
+          ),
+        );
+      }
+
+      await _mediaService.deletePortfolioMedia(media.id, media.url);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Archivo eliminado', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.green,
+          ),
+        );
+        await _loadMedia();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al eliminar: $e', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final myId = _supabase.auth.currentUser?.id;
@@ -80,12 +293,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
           if (isMe)
             IconButton(
               icon: const Icon(Icons.add_circle_outline, color: AppConstants.primaryColor),
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => UploadMediaScreen(userId: widget.userId, onUploadComplete: _loadMedia),
-                ),
-              ),
+              onPressed: () => context.push('/upload-media', extra: {'userId': widget.userId, 'onUploadComplete': _loadMedia}),
             ),
         ],
       ),
@@ -145,6 +353,9 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   }
 
   Widget _buildGrid() {
+    final myId = _supabase.auth.currentUser?.id;
+    final isMe = widget.userId == myId;
+
     return MasonryGridView.count(
       crossAxisCount: 2,
       itemCount: _filteredMedia.length,
@@ -158,6 +369,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
             context,
             MaterialPageRoute(builder: (_) => MediaDetailScreen(media: media)),
           ),
+          onLongPress: isMe ? () => _showMediaOptions(media) : null,
           child: Container(
             decoration: BoxDecoration(
               color: Theme.of(context).cardColor,
@@ -169,18 +381,42 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  AspectRatio(
-                    aspectRatio: media.tipo == 'imagen' ? 0.8 : 1.2,
-                    child: media.tipo == 'imagen' 
-                        ? Image.network(media.url, fit: BoxFit.cover)
-                        : Container(
-                            color: Theme.of(context).cardColor,
-                            child: Icon(
-                              media.tipo == 'video' ? Icons.play_circle_outline : Icons.music_note,
-                              color: AppConstants.primaryColor,
-                              size: 40,
+                  Stack(
+                    children: [
+                      AspectRatio(
+                        aspectRatio: media.tipo == 'imagen' ? 0.8 : 1.2,
+                        child: media.tipo == 'imagen' 
+                            ? Image.network(media.url, fit: BoxFit.cover)
+                            : Container(
+                                color: Theme.of(context).cardColor,
+                                child: Icon(
+                                  media.tipo == 'video' ? Icons.play_circle_outline : Icons.music_note,
+                                  color: AppConstants.primaryColor,
+                                  size: 40,
+                                ),
+                              ),
+                      ),
+                      if (isMe)
+                        Positioned(
+                          top: 8,
+                          right: 8,
+                          child: GestureDetector(
+                            onTap: () => _showMediaOptions(media),
+                            child: Container(
+                              padding: const EdgeInsets.all(6),
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.6),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(
+                                Icons.more_vert,
+                                color: Colors.white,
+                                size: 18,
+                              ),
                             ),
                           ),
+                        ),
+                    ],
                   ),
                   Padding(
                     padding: const EdgeInsets.all(12),

@@ -1,0 +1,75 @@
+═══════════════════════════════════════════════════════════════════════════════
+  📦 CONFIGURACIÓN RÁPIDA DE SUPABASE STORAGE (5 MINUTOS)
+═══════════════════════════════════════════════════════════════════════════════
+
+🌐 URL: https://supabase.com/dashboard
+📁 Proyecto: lwrlunndqzepwsbmofki
+
+═══════════════════════════════════════════════════════════════════════════════
+  PASO 1: CREAR BUCKET (2 minutos)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Menú lateral → Storage
+2. Click "New bucket"
+3. Configurar:
+   ┌─────────────────────────────────────┐
+   │ Name: media                         │
+   │ Public bucket: ✅ (ACTIVADO)        │
+   │ File size limit: 50 MB              │
+   │ Allowed MIME types:                 │
+   │   - image/*                         │
+   │   - audio/*                         │
+   │   - video/mp4                       │
+   └─────────────────────────────────────┘
+4. Click "Create bucket"
+
+═══════════════════════════════════════════════════════════════════════════════
+  PASO 2: CREAR CARPETAS (1 minuto)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Click en bucket "media"
+2. Click "New folder" → Nombre: messages → Create
+3. Click "New folder" → Nombre: portfolio → Create
+
+Estructura final:
+media/
+├── messages/
+└── portfolio/
+
+═══════════════════════════════════════════════════════════════════════════════
+  PASO 3: CONFIGURAR POLÍTICAS RLS (2 minutos)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Menú lateral → SQL Editor
+2. Click "New query"
+3. Copiar contenido de: oolale_mobile/SETUP_SUPABASE_STORAGE.sql
+4. Click "Run"
+5. Verificar mensaje: "✅ POLÍTICAS DE STORAGE CONFIGURADAS"
+
+═══════════════════════════════════════════════════════════════════════════════
+  ✅ VERIFICACIÓN
+═══════════════════════════════════════════════════════════════════════════════
+
+Bucket 'media':
+✓ Creado
+✓ Público (icono 🌐)
+✓ Límite 50MB
+✓ MIME types configurados
+
+Carpetas:
+✓ messages/
+✓ portfolio/
+
+Políticas (4):
+✓ Public read access
+✓ Authenticated upload
+✓ User update own files
+✓ User delete own files
+
+═══════════════════════════════════════════════════════════════════════════════
+  🎉 ¡LISTO!
+═══════════════════════════════════════════════════════════════════════════════
+
+Próximo paso: flutter pub get
+
+═══════════════════════════════════════════════════════════════════════════════

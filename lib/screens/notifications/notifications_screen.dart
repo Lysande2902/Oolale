@@ -83,6 +83,40 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     }
   }
 
+  Future<void> _markAsRead(String notificationId) async {
+    try {
+      await _supabase
+          .from('notifications')
+          .update({'leido': true})
+          .eq('id', notificationId);
+      _loadNotifications();
+    } catch (e) {
+      debugPrint('Error marcando notificación: $e');
+    }
+  }
+
+  Future<void> _deleteNotification(String notificationId) async {
+    try {
+      await _supabase
+          .from('notifications')
+          .delete()
+          .eq('id', notificationId);
+      _loadNotifications();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Notificación eliminada', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.grey.shade800,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error eliminando notificación: $e');
+    }
+  }
+
   Future<void> _markAllAsRead() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
@@ -141,6 +175,8 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         return _NotificationTile(
           notification: notification,
           onTap: () => _handleNotificationTap(notification),
+          onDelete: () => _deleteNotification(notification['id']),
+          onMarkAsRead: () => _markAsRead(notification['id']),
         );
       },
     );
@@ -211,8 +247,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 class _NotificationTile extends StatelessWidget {
   final Map<String, dynamic> notification;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
+  final VoidCallback onMarkAsRead;
 
-  const _NotificationTile({required this.notification, required this.onTap});
+  const _NotificationTile({
+    required this.notification,
+    required this.onTap,
+    required this.onDelete,
+    required this.onMarkAsRead,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -220,64 +263,112 @@ class _NotificationTile extends StatelessWidget {
     final createdAt = DateTime.parse(notification['created_at']);
     final tipo = notification['tipo'] as String?;
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: isUnread ? AppConstants.primaryColor.withOpacity(0.3) : ThemeColors.divider(context),
+    return Dismissible(
+      key: Key(notification['id'].toString()),
+      direction: DismissDirection.endToStart,
+      background: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Colors.red,
+          borderRadius: BorderRadius.circular(16),
         ),
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        child: const Icon(Icons.delete, color: Colors.white),
       ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: _getIconColor(tipo).withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(_getIcon(tipo), color: _getIconColor(tipo), size: 20),
+      onDismissed: (_) => onDelete(),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isUnread ? AppConstants.primaryColor.withOpacity(0.3) : ThemeColors.divider(context),
+          ),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          onLongPress: () {
+            showModalBottomSheet(
+              context: context,
+              backgroundColor: Theme.of(context).cardColor,
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
               ),
-              const SizedBox(width: 16),
-              Expanded(
+              builder: (context) => SafeArea(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      notification['titulo'] ?? 'Alerta',
-                      style: GoogleFonts.outfit(
-                        fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
-                        fontSize: 16,
+                    if (isUnread)
+                      ListTile(
+                        leading: const Icon(Icons.done, color: AppConstants.primaryColor),
+                        title: Text('Marcar como leída', style: GoogleFonts.outfit()),
+                        onTap: () {
+                          Navigator.pop(context);
+                          onMarkAsRead();
+                        },
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      notification['mensaje'] ?? '',
-                      style: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      timeago(createdAt),
-                      style: GoogleFonts.outfit(color: ThemeColors.iconSecondary(context), fontSize: 11),
+                    ListTile(
+                      leading: const Icon(Icons.delete, color: Colors.red),
+                      title: Text('Eliminar', style: GoogleFonts.outfit()),
+                      onTap: () {
+                        Navigator.pop(context);
+                        onDelete();
+                      },
                     ),
                   ],
                 ),
               ),
-              if (isUnread)
+            );
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
                 Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(color: AppConstants.primaryColor, shape: BoxShape.circle),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _getIconColor(tipo).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(_getIcon(tipo), color: _getIconColor(tipo), size: 20),
                 ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        notification['titulo'] ?? 'Alerta',
+                        style: GoogleFonts.outfit(
+                          fontWeight: isUnread ? FontWeight.bold : FontWeight.normal,
+                          fontSize: 16,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        notification['mensaje'] ?? '',
+                        style: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        timeago(createdAt),
+                        style: GoogleFonts.outfit(color: ThemeColors.iconSecondary(context), fontSize: 11),
+                      ),
+                    ],
+                  ),
+                ),
+                if (isUnread)
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(color: AppConstants.primaryColor, shape: BoxShape.circle),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

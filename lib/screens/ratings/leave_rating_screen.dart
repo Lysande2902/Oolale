@@ -26,6 +26,8 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
   bool _isSubmitting = false;
   bool _hasWorkedTogether = false;
   bool _checkingConnection = true;
+  Map<String, dynamic>? _existingRating; // Para almacenar la calificación existente
+  bool _isEditMode = false; // Para saber si estamos editando
 
   @override
   void initState() {
@@ -46,40 +48,82 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
       return;
     }
 
-    try {
-      // Verificar si trabajaron juntos en algún evento
-      final gigsData = await _supabase
-          .from('gig_lineup')
-          .select('gig_id')
-          .eq('perfil_id', myId);
+    // Prevenir auto-calificación
+    if (myId == widget.userId) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No puedes calificarte a ti mismo', style: GoogleFonts.outfit()),
+            backgroundColor: Colors.orange[700],
+          ),
+        );
+      }
+      return;
+    }
 
-      if (gigsData.isEmpty) {
+    try {
+      // VERIFICAR SI YA CALIFICÓ A ESTE USUARIO
+      final existingRating = await _supabase
+          .from('referencias')
+          .select()
+          .eq('evaluador_id', myId)
+          .eq('evaluado_id', widget.userId)
+          .maybeSingle();
+
+      if (existingRating != null) {
+        // En lugar de cerrar, cargar la calificación existente para editar
         if (mounted) {
           setState(() {
-            _hasWorkedTogether = false;
-            _checkingConnection = false;
+            _existingRating = existingRating;
+            _isEditMode = true;
+            _rating = existingRating['puntuacion'] ?? 0;
+            _commentController.text = existingRating['comentario'] ?? '';
           });
         }
-        return;
       }
 
-      final gigIds = gigsData.map((g) => g['gig_id']).toList();
+      // NUEVA LÓGICA: Verificar si son conexiones aceptadas
+      // Esto es más flexible que solo verificar eventos compartidos
+      final connectionData = await _supabase
+          .from('connections')
+          .select()
+          .or('and(usuario_id.eq.$myId,conectado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},conectado_id.eq.$myId)')
+          .eq('estatus', 'accepted')
+          .maybeSingle();
 
-      // Verificar si el otro usuario estuvo en alguno de esos eventos
-      final sharedGigs = await _supabase
-          .from('gig_lineup')
-          .select('gig_id')
-          .eq('perfil_id', widget.userId)
-          .inFilter('gig_id', gigIds);
+      final areConnected = connectionData != null;
+
+      // OPCIONAL: También verificar si trabajaron juntos en eventos
+      // Esto da más peso a la calificación
+      bool workedTogether = false;
+      if (areConnected) {
+        final gigsData = await _supabase
+            .from('gig_lineup')
+            .select('gig_id')
+            .eq('perfil_id', myId);
+
+        if (gigsData.isNotEmpty) {
+          final gigIds = gigsData.map((g) => g['gig_id']).toList();
+
+          final sharedGigs = await _supabase
+              .from('gig_lineup')
+              .select('gig_id')
+              .eq('perfil_id', widget.userId)
+              .inFilter('gig_id', gigIds);
+
+          workedTogether = sharedGigs.isNotEmpty;
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _hasWorkedTogether = sharedGigs.isNotEmpty;
+          _hasWorkedTogether = areConnected; // Ahora significa "son conexiones"
           _checkingConnection = false;
         });
       }
     } catch (e) {
-      debugPrint('Error verificando eventos compartidos: $e');
+      debugPrint('Error verificando conexión: $e');
       if (mounted) {
         setState(() {
           _hasWorkedTogether = false;
@@ -106,28 +150,56 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
     setState(() => _isSubmitting = true);
 
     try {
-      // Insertar calificación
-      await _supabase.from('referencias').insert({
-        'evaluador_id': myId,
-        'evaluado_id': widget.userId,
-        'puntuacion': _rating,
-        'comentario': _commentController.text.trim().isEmpty ? null : _commentController.text.trim(),
-        'tipo_interaccion': 'evento', // o 'colaboracion'
-        'verificado': _hasWorkedTogether,
-      });
+      if (_isEditMode && _existingRating != null) {
+        // ACTUALIZAR calificación existente
+        await _supabase.from('referencias').update({
+          'puntuacion': _rating,
+          'comentario': _commentController.text.trim().isEmpty ? null : _commentController.text.trim(),
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', _existingRating!['id']);
+      } else {
+        // INSERTAR nueva calificación
+        await _supabase.from('referencias').insert({
+          'evaluador_id': myId,
+          'evaluado_id': widget.userId,
+          'puntuacion': _rating,
+          'comentario': _commentController.text.trim().isEmpty ? null : _commentController.text.trim(),
+          'tipo_interaccion': 'evento',
+          'verificado': _hasWorkedTogether,
+        });
+      }
 
       // Actualizar rating promedio del usuario evaluado
       await _updateUserRating();
 
+      // Crear notificación solo si es nueva calificación
+      if (!_isEditMode) {
+        try {
+          await _supabase.from('notifications').insert({
+            'user_id': widget.userId,
+            'tipo': 'new_rating',
+            'titulo': 'Nueva calificación',
+            'mensaje': 'Recibiste una calificación de $_rating estrellas',
+            'leido': false,
+            'data': {'sender_id': myId, 'rating': _rating},
+          });
+        } catch (notifError) {
+          debugPrint('Error creando notificación: $notifError');
+        }
+      }
+
       if (mounted) {
-        Navigator.pop(context, true); // Retornar true para indicar éxito
+        Navigator.pop(context, true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
                 const Icon(Icons.check_circle, color: Colors.white),
                 const SizedBox(width: 12),
-                Text('Calificación enviada', style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
+                Text(
+                  _isEditMode ? 'Calificación actualizada' : 'Calificación enviada',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                ),
               ],
             ),
             backgroundColor: Colors.green[700],
@@ -161,7 +233,8 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
       if (ratingsData.isEmpty) return;
 
       final ratings = ratingsData.map((r) => r['puntuacion'] as int).toList();
-      final average = ratings.reduce((a, b) => a + b) / ratings.length;
+      // FIX: Prevenir división por cero
+      final average = ratings.isEmpty ? 0.0 : ratings.reduce((a, b) => a + b) / ratings.length;
 
       // Actualizar perfil
       await _supabase
@@ -197,7 +270,10 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Text('Calificar Usuario', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        title: Text(
+          _isEditMode ? 'Editar Calificación' : 'Calificar Usuario',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        ),
         iconTheme: IconThemeData(color: ThemeColors.icon(context)),
       ),
       body: SingleChildScrollView(
@@ -247,7 +323,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
                               Icon(Icons.verified, size: 14, color: Colors.green),
                               const SizedBox(width: 4),
                               Text(
-                                'Trabajaron juntos',
+                                'Son conexiones',
                                 style: GoogleFonts.outfit(
                                   fontSize: 12,
                                   color: Colors.green,
@@ -364,7 +440,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
                         ),
                       )
                     : Text(
-                        'Enviar Calificación',
+                        _isEditMode ? 'Actualizar Calificación' : 'Enviar Calificación',
                         style: GoogleFonts.outfit(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
