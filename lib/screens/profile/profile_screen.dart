@@ -44,7 +44,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     
     try {
       final profile = await _supabase
-          .from('profiles')
+          .from('perfiles')
           .select()
           .eq('id', user.id)
           .maybeSingle();
@@ -63,18 +63,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Cargar géneros musicales
       final genresData = await _supabase
-          .from('profile_genres')
+          .from('generos_perfil')
           .select('genre')
           .eq('profile_id', user.id);
 
       // Cargar contadores
       final eventosData = await _supabase
-          .from('gig_lineup')
+          .from('participantes_evento')
           .select()
-          .eq('perfil_id', user.id);
+          .eq('user_id', user.id);
 
       final seguidoresData = await _supabase
-          .from('connections')
+          .from('conexiones')
           .select()
           .eq('conectado_id', user.id)
           .eq('estatus', 'accepted');
@@ -146,7 +146,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark 
+          ? Theme.of(context).scaffoldBackgroundColor 
+          : Colors.white,
       body: SingleChildScrollView(
         child: Column(
           children: [
@@ -219,16 +221,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildHeader() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       height: 300,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            AppConstants.primaryColor.withOpacity(0.2),
-            Colors.black,
-          ],
+          colors: isDark
+              ? [
+                  AppConstants.primaryColor.withOpacity(0.2),
+                  Colors.black,
+                ]
+              : [
+                  AppConstants.primaryColor.withOpacity(0.05),
+                  Colors.white,
+                ],
         ),
       ),
       child: SafeArea(
@@ -405,59 +414,87 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildStatsRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildStat(
-          _eventosCount.toString(), 'Eventos',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: _profileData!['id']))),
-        ),
-        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
-        _buildStat(
-          _seguidoresCount.toString(), 'Seguidores',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: _profileData!['id']))),
-        ),
-        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
-        _buildStat(
-          _musicCount.toString(), 'Equipo',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: _profileData!['id']))),
-        ),
-        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
-        _buildStat(
-          _ratingsCount.toString(), 'Ratings',
-          () {
-            // Ver mis ratings recibidos
-            final myId = _supabase.auth.currentUser?.id;
-            if (myId != null) {
-              context.push('/ratings/$myId');
-            }
-          },
-        ),
-      ],
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: ThemeColors.divider(context).withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.4 : 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildStat(
+            _eventosCount.toString(), 'Eventos',
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: _profileData!['id']))),
+          ),
+          _buildStatDivider(),
+          _buildStat(
+            _seguidoresCount.toString(), 'Seguidores',
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: _profileData!['id']))),
+          ),
+          _buildStatDivider(),
+          _buildStat(
+            _musicCount.toString(), 'Equipo',
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: _profileData!['id']))),
+          ),
+          _buildStatDivider(),
+          _buildStat(
+            _ratingsCount.toString(), 'Ratings',
+            () {
+              final myId = _supabase.auth.currentUser?.id;
+              if (myId != null) context.push('/ratings/$myId');
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatDivider() {
+    return Container(
+      height: 30,
+      width: 1,
+      color: ThemeColors.divider(context).withOpacity(0.08),
     );
   }
 
   Widget _buildStat(String value, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               value,
               style: GoogleFonts.outfit(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: ThemeColors.primaryText(context),
+                letterSpacing: -0.5,
               ),
             ),
+            const SizedBox(height: 4),
             Text(
               label,
               style: GoogleFonts.outfit(
-                color: ThemeColors.hintText(context),
-                fontSize: 12,
+                color: ThemeColors.secondaryText(context).withOpacity(0.7),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
               ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -335,52 +336,14 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           _emailSent = true;
         });
       }
-    } on AuthException catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_rounded, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    e.message,
-                    style: GoogleFonts.outfit(),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red[700],
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
-      }
     } catch (e) {
+      ErrorHandler.logError('ForgotPasswordScreen._handleSendResetEmail', e);
       if (mounted) {
         setState(() => _isLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_rounded, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Error al enviar el correo',
-                    style: GoogleFonts.outfit(),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red[700],
-            behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+        ErrorHandler.showErrorSnackBar(
+          context, 
+          e, 
+          customMessage: 'Error al enviar el correo de recuperación'
         );
       }
     }

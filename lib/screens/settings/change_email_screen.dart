@@ -98,124 +98,130 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
         title: Text('CAMBIAR EMAIL', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildSection('EMAIL ACTUAL'),
+            _buildSection('CONFIGURACIÓN ACTUAL'),
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
                 color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: ThemeColors.divider(context)),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: ThemeColors.divider(context).withOpacity(0.1)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
               child: Row(
                 children: [
-                  Icon(Icons.email_rounded, color: AppConstants.primaryColor),
-                  const SizedBox(width: 12),
-                  Text(
-                    _currentEmail,
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppConstants.primaryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.email_rounded, color: AppConstants.primaryColor, size: 20),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Email actual', style: GoogleFonts.outfit(fontSize: 12, color: ThemeColors.secondaryText(context))),
+                        const SizedBox(height: 2),
+                        Text(
+                          _currentEmail,
+                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 30),
-            _buildSection('NUEVO EMAIL'),
+            const SizedBox(height: 32),
+            _buildSection('NUEVOS DATOS'),
             
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: ThemeColors.divider(context)),
-              ),
-              child: TextField(
-                controller: _newEmailController,
-                keyboardType: TextInputType.emailAddress,
-                decoration: const InputDecoration(
-                  labelText: 'Nuevo Email',
-                  hintText: 'nuevo@email.com',
-                  prefixIcon: Icon(Icons.email_rounded),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.all(16),
-                ),
-              ),
+            _buildInputField(
+              controller: _newEmailController,
+              label: 'Nuevo Email',
+              hint: 'ejemplo@correo.com',
+              icon: Icons.alternate_email_rounded,
+              keyboardType: TextInputType.emailAddress,
             ),
 
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: ThemeColors.divider(context)),
-              ),
-              child: TextField(
-                controller: _passwordController,
-                obscureText: !_passwordVisible,
-                decoration: InputDecoration(
-                  labelText: 'Contraseña Actual',
-                  hintText: 'Confirma tu contraseña',
-                  prefixIcon: const Icon(Icons.lock_rounded),
-                  suffixIcon: IconButton(
-                    icon: Icon(_passwordVisible ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(16),
-                ),
-              ),
+            const SizedBox(height: 16),
+            
+            _buildInputField(
+              controller: _passwordController,
+              label: 'Contraseña Actual',
+              hint: 'Confirma con tu contraseña',
+              icon: Icons.lock_outline_rounded,
+              isPassword: true,
+              visible: _passwordVisible,
+              onToggleVisibility: () => setState(() => _passwordVisible = !_passwordVisible),
             ),
 
             if (_errorMessage != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppConstants.errorColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppConstants.errorColor),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: AppConstants.errorColor, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _errorMessage!,
-                        style: GoogleFonts.outfit(color: AppConstants.errorColor, fontSize: 12),
+              Padding(
+                padding: const EdgeInsets.only(top: 8, bottom: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppConstants.errorColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppConstants.errorColor.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: AppConstants.errorColor, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: GoogleFonts.outfit(color: AppConstants.errorColor, fontSize: 13),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
 
+            const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
+              height: 56,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _changeEmail,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppConstants.primaryColor,
                   foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 child: _isLoading
                     ? const SizedBox(
-                        height: 20,
-                        width: 20,
+                        height: 24,
+                        width: 24,
                         child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
                       )
-                    : Text('CAMBIAR EMAIL', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                    : Text('ACTUALIZAR EMAIL', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1)),
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 32),
             _buildInfoCard(),
           ],
         ),
@@ -230,9 +236,50 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
         title,
         style: GoogleFonts.outfit(
           color: AppConstants.primaryColor,
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w900,
-          letterSpacing: 2,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    bool isPassword = false,
+    bool visible = false,
+    VoidCallback? onToggleVisibility,
+    TextInputType? keyboardType,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context).withOpacity(0.1)),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: isPassword && !visible,
+        keyboardType: keyboardType,
+        style: GoogleFonts.outfit(fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
+          hintText: hint,
+          hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context).withOpacity(0.5), fontSize: 14),
+          prefixIcon: Icon(icon, color: AppConstants.primaryColor.withOpacity(0.7), size: 20),
+          suffixIcon: isPassword
+              ? IconButton(
+                  icon: Icon(visible ? Icons.visibility_off : Icons.visibility, size: 20),
+                  onPressed: onToggleVisibility,
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          filled: false,
         ),
       ),
     );
@@ -240,22 +287,24 @@ class _ChangeEmailScreenState extends State<ChangeEmailScreen> {
 
   Widget _buildInfoCard() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppConstants.primaryColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
+        color: AppConstants.primaryColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.2)),
       ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.info_outline_rounded, color: AppConstants.primaryColor, size: 24),
-          const SizedBox(width: 12),
+          const Icon(Icons.info_outline_rounded, color: AppConstants.primaryColor, size: 24),
+          const SizedBox(width: 16),
           Expanded(
             child: Text(
-              'Recibirás un email de confirmación en tu nueva dirección. Debes verificarlo para completar el cambio.',
+              'Por motivos de seguridad, te enviaremos un email de confirmación a tu nueva dirección. El cambio no será efectivo hasta que lo verifiques.',
               style: GoogleFonts.outfit(
                 color: ThemeColors.secondaryText(context),
-                fontSize: 12,
+                fontSize: 13,
+                height: 1.5,
               ),
             ),
           ),

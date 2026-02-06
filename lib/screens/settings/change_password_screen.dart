@@ -79,164 +79,165 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
-        title: Text('Cambiar Contraseña', 
-          style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        title: Text('CAMBIAR CONTRASEÑA', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppConstants.primaryColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: AppConstants.primaryColor),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        'Tu nueva contraseña debe tener al menos 6 caracteres',
-                        style: GoogleFonts.outfit(fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 30),
+              _buildInfoCard(),
+              const SizedBox(height: 32),
               
-              Text('Nueva Contraseña', 
-                style: GoogleFonts.outfit(
-                  fontSize: 14, 
-                  fontWeight: FontWeight.w600,
-                  color: ThemeColors.secondaryText(context),
-                )),
-              const SizedBox(height: 8),
-              TextFormField(
+              _buildSection('NUEVA SEGURIDAD'),
+              _buildInputField(
                 controller: _newPasswordController,
-                obscureText: _obscureNew,
-                style: TextStyle(color: ThemeColors.primaryText(context)),
-                decoration: InputDecoration(
-                  hintText: 'Ingresa tu nueva contraseña',
-                  hintStyle: TextStyle(color: ThemeColors.hintText(context)),
-                  filled: true,
-                  fillColor: Theme.of(context).cardColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: ThemeColors.divider(context)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: ThemeColors.divider(context)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppConstants.primaryColor, width: 2),
-                  ),
-                  prefixIcon: Icon(Icons.lock_outline, color: AppConstants.primaryColor),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureNew ? Icons.visibility_off : Icons.visibility,
-                      color: ThemeColors.hintText(context),
-                    ),
-                    onPressed: () => setState(() => _obscureNew = !_obscureNew),
-                  ),
-                ),
+                label: 'Nueva Contraseña',
+                hint: 'Mínimo 6 caracteres',
+                icon: Icons.lock_outline_rounded,
+                isPassword: true,
+                visible: !_obscureNew,
+                onToggleVisibility: () => setState(() => _obscureNew = !_obscureNew),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Ingresa una contraseña';
-                  }
-                  if (value.length < 6) {
-                    return 'La contraseña debe tener al menos 6 caracteres';
-                  }
+                  if (value == null || value.isEmpty) return 'Ingresa una contraseña';
+                  if (value.length < 6) return 'Mínimo 6 caracteres';
                   return null;
                 },
               ),
               
               const SizedBox(height: 20),
               
-              Text('Confirmar Contraseña', 
-                style: GoogleFonts.outfit(
-                  fontSize: 14, 
-                  fontWeight: FontWeight.w600,
-                  color: ThemeColors.secondaryText(context),
-                )),
-              const SizedBox(height: 8),
-              TextFormField(
+              _buildInputField(
                 controller: _confirmPasswordController,
-                obscureText: _obscureConfirm,
-                style: TextStyle(color: ThemeColors.primaryText(context)),
-                decoration: InputDecoration(
-                  hintText: 'Confirma tu nueva contraseña',
-                  hintStyle: TextStyle(color: ThemeColors.hintText(context)),
-                  filled: true,
-                  fillColor: Theme.of(context).cardColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: ThemeColors.divider(context)),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: ThemeColors.divider(context)),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppConstants.primaryColor, width: 2),
-                  ),
-                  prefixIcon: Icon(Icons.lock_outline, color: AppConstants.primaryColor),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureConfirm ? Icons.visibility_off : Icons.visibility,
-                      color: ThemeColors.hintText(context),
-                    ),
-                    onPressed: () => setState(() => _obscureConfirm = !_obscureConfirm),
-                  ),
-                ),
+                label: 'Confirmar Contraseña',
+                hint: 'Repite tu nueva contraseña',
+                icon: Icons.enhanced_encryption_outlined,
+                isPassword: true,
+                visible: !_obscureConfirm,
+                onToggleVisibility: () => setState(() => _obscureConfirm = !_obscureConfirm),
                 validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Confirma tu contraseña';
-                  }
-                  if (value != _newPasswordController.text) {
-                    return 'Las contraseñas no coinciden';
-                  }
+                  if (value == null || value.isEmpty) return 'Confirma tu contraseña';
+                  if (value != _newPasswordController.text) return 'Las contraseñas no coinciden';
                   return null;
                 },
               ),
               
-              const SizedBox(height: 40),
+              const SizedBox(height: 48),
               
               SizedBox(
                 width: double.infinity,
-                height: 55,
+                height: 56,
                 child: ElevatedButton(
                   onPressed: _isLoading ? null : _changePassword,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: AppConstants.primaryColor,
                     foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
                   child: _isLoading
-                      ? const CircularProgressIndicator(color: Colors.black)
-                      : Text('Cambiar Contraseña', 
-                          style: GoogleFonts.outfit(
-                            fontWeight: FontWeight.bold, 
-                            fontSize: 16,
-                          )),
+                      ? const SizedBox(
+                          height: 24,
+                          width: 24,
+                          child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2),
+                        )
+                      : Text('ACTUALIZAR CONTRASEÑA', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1)),
                 ),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSection(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12, left: 4),
+      child: Text(
+        title,
+        style: GoogleFonts.outfit(
+          color: AppConstants.primaryColor,
+          fontSize: 11,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 1.5,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    required bool isPassword,
+    required bool visible,
+    required VoidCallback onToggleVisibility,
+    String? Function(String?)? validator,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context).withOpacity(0.1)),
+      ),
+      child: TextFormField(
+        controller: controller,
+        obscureText: isPassword && !visible,
+        style: GoogleFonts.outfit(fontWeight: FontWeight.w500),
+        validator: validator,
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
+          hintText: hint,
+          hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context).withOpacity(0.5), fontSize: 14),
+          prefixIcon: Icon(icon, color: AppConstants.primaryColor.withOpacity(0.7), size: 20),
+          suffixIcon: IconButton(
+            icon: Icon(visible ? Icons.visibility_off : Icons.visibility, size: 20),
+            onPressed: onToggleVisibility,
+          ),
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          filled: false,
+          errorStyle: GoogleFonts.outfit(color: AppConstants.errorColor, fontSize: 11),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppConstants.primaryColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.2)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.security_rounded, color: AppConstants.primaryColor, size: 24),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(
+              'Tu nueva contraseña debe tener al menos 6 caracteres. Te recomendamos usar una combinación de letras, números y símbolos.',
+              style: GoogleFonts.outfit(
+                color: ThemeColors.secondaryText(context),
+                fontSize: 13,
+                height: 1.5,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

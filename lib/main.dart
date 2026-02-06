@@ -43,6 +43,8 @@ import 'screens/settings/terms_screen.dart';
 import 'screens/settings/privacy_policy_screen.dart';
 import 'screens/settings/notifications_settings_screen.dart';
 import 'screens/settings/privacy_settings_screen.dart';
+import 'screens/settings/account_settings_screen.dart';
+import 'screens/settings/suspend_account_screen.dart';
 import 'screens/settings/delete_account_screen.dart';
 import 'screens/settings/cache_settings_screen.dart';
 import 'screens/settings/font_size_screen.dart';
@@ -181,9 +183,9 @@ class _AppRouter extends StatelessWidget {
       routes: [
          GoRoute(
           path: '/',
-          builder: (context, state) => const Scaffold(
-            backgroundColor: AppConstants.backgroundColor,
-            body: Center(child: CircularProgressIndicator(color: AppConstants.primaryColor)),
+          builder: (context, state) => Scaffold(
+            backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+            body: const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor)),
           ),
         ),
         GoRoute(
@@ -316,6 +318,10 @@ class _AppRouter extends StatelessWidget {
           builder: (context, state) => const ChangePasswordScreen(),
         ),
         GoRoute(
+          path: '/settings/account-settings',
+          builder: (context, state) => const AccountSettingsScreen(),
+        ),
+        GoRoute(
           path: '/settings/help',
           builder: (context, state) => const HelpCenterScreen(),
         ),
@@ -367,6 +373,14 @@ class _AppRouter extends StatelessWidget {
           path: '/settings/language',
           builder: (context, state) => const LanguageScreen(),
         ),
+        GoRoute(
+          path: '/settings/account-settings',
+          builder: (context, state) => const AccountSettingsScreen(),
+        ),
+        GoRoute(
+          path: '/settings/suspend-account',
+          builder: (context, state) => const SuspendAccountScreen(),
+        ),
       ],
     );
 
@@ -381,60 +395,82 @@ class _AppRouter extends StatelessWidget {
         useMaterial3: true,
         brightness: Brightness.light,
         primaryColor: AppConstants.primaryColor,
-        scaffoldBackgroundColor: const Color(0xFFF8F9FA),
-        cardColor: Colors.white,
-        dividerColor: const Color(0xFFE0E0E0),
+        scaffoldBackgroundColor: AppConstants.bgLight,
+        cardColor: AppConstants.cardLight,
+        dividerColor: AppConstants.borderLight,
         textTheme: GoogleFonts.outfitTextTheme(ThemeData.light().textTheme).apply(
-          bodyColor: const Color(0xFF1A1A1A),
-          displayColor: const Color(0xFF1A1A1A),
+          bodyColor: AppConstants.textLightPrimary,
+          displayColor: AppConstants.textLightPrimary,
         ),
         colorScheme: const ColorScheme.light(
           primary: AppConstants.primaryColor,
           secondary: AppConstants.accentColor,
-          surface: Colors.white,
-          background: Color(0xFFF8F9FA),
-          onPrimary: Colors.black,
+          surface: AppConstants.cardLight,
+          background: AppConstants.bgLight,
+          onPrimary: Colors.white,
           onSecondary: Colors.black,
-          onSurface: Color(0xFF1A1A1A),
-          onBackground: Color(0xFF1A1A1A),
+          onSurface: AppConstants.textLightPrimary,
         ),
         appBarTheme: AppBarTheme(
-          backgroundColor: const Color(0xFFF8F9FA),
+          backgroundColor: AppConstants.bgLight,
           elevation: 0,
-          iconTheme: const IconThemeData(color: Color(0xFF1A1A1A)),
+          scrolledUnderElevation: 0, // Evita cambio de color al scroll
+          iconTheme: const IconThemeData(color: AppConstants.textLightPrimary),
           titleTextStyle: GoogleFonts.outfit(
-            color: const Color(0xFF1A1A1A),
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
+            color: AppConstants.textLightPrimary,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
           ),
         ),
         cardTheme: CardThemeData(
-          color: Colors.white,
-          elevation: 0,
+          color: AppConstants.cardLight,
+          elevation: 4, // Elevación para profundidad real
+          shadowColor: const Color(0xFF0F172A).withOpacity(0.08), // Sombra azulada premium
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: const BorderSide(color: Color(0xFFE0E0E0), width: 1),
+            side: const BorderSide(color: Colors.white, width: 1), // Borde interior limpio
           ),
         ),
-        iconTheme: const IconThemeData(color: Color(0xFF1A1A1A)),
+        iconTheme: const IconThemeData(color: AppConstants.textLightPrimary, size: 24),
+        floatingActionButtonTheme: const FloatingActionButtonThemeData(
+          backgroundColor: AppConstants.primaryColor,
+          foregroundColor: Colors.white,
+          elevation: 6,
+        ),
+        chipTheme: ChipThemeData(
+          backgroundColor: AppConstants.bgLightSecondary,
+          labelStyle: GoogleFonts.outfit(color: AppConstants.textLightPrimary, fontSize: 13),
+          secondaryLabelStyle: GoogleFonts.outfit(color: Colors.black, fontWeight: FontWeight.bold),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          side: const BorderSide(color: AppConstants.borderLight),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppConstants.primaryColor,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+          ),
+        ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
-          hintStyle: TextStyle(color: const Color(0xFF1A1A1A).withOpacity(0.4)),
-          labelStyle: const TextStyle(color: Color(0xFF666666)),
+          hintStyle: TextStyle(color: AppConstants.textLightSecondary.withOpacity(0.4)),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: AppConstants.borderLight),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFE0E0E0)),
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: AppConstants.borderLight),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppConstants.primaryColor, width: 2),
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: AppConstants.primaryColor, width: 1.5),
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
         ),
       ),
       darkTheme: ThemeData(
@@ -442,21 +478,51 @@ class _AppRouter extends StatelessWidget {
         brightness: Brightness.dark,
         primaryColor: AppConstants.primaryColor,
         scaffoldBackgroundColor: AppConstants.backgroundColor,
-        textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme),
+        cardColor: AppConstants.cardColor,
+        dividerColor: AppConstants.borderColor,
+        textTheme: GoogleFonts.outfitTextTheme(ThemeData.dark().textTheme).apply(
+          bodyColor: AppConstants.textPrimary,
+          displayColor: AppConstants.textPrimary,
+        ),
         colorScheme: const ColorScheme.dark(
           primary: AppConstants.primaryColor,
           secondary: AppConstants.accentColor,
           surface: AppConstants.cardColor,
+          background: AppConstants.backgroundColor,
+          onPrimary: Colors.black,
+          onSurface: AppConstants.textPrimary,
+        ),
+        appBarTheme: AppBarTheme(
+          backgroundColor: AppConstants.backgroundColor,
+          elevation: 0,
+          scrolledUnderElevation: 0,
+          iconTheme: const IconThemeData(color: AppConstants.textPrimary),
+          titleTextStyle: GoogleFonts.outfit(
+            color: AppConstants.textPrimary,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: AppConstants.cardColor,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: AppConstants.borderColor, width: 1),
+          ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
-          fillColor: AppConstants.cardColor,
-          hintStyle: TextStyle(color: Colors.white.withOpacity(0.2)),
+          fillColor: AppConstants.bgDarkSecondary,
+          hintStyle: TextStyle(color: AppConstants.textSecondary.withOpacity(0.3)),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,
           ),
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: AppConstants.primaryColor, width: 1),
+          ),
         ),
       ),
       routerConfig: router,

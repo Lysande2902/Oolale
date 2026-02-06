@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 class PrivacySettingsScreen extends StatefulWidget {
   const PrivacySettingsScreen({super.key});
@@ -35,7 +36,7 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
 
     try {
       final data = await _supabase
-          .from('privacy_settings')
+          .from('configuracion_privacidad')
           .select()
           .eq('user_id', userId)
           .maybeSingle();
@@ -53,18 +54,28 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         });
       } else {
         // Crear configuración por defecto
-        await _createDefaultSettings(userId);
+        await _createDefaultSettings(userId).catchError((e) {
+             ErrorHandler.logError('PrivacySettingsScreen._loadSettings.createDefault', e);
+        });
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint('Error loading privacy settings: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('PrivacySettingsScreen._loadSettings', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context, 
+          e, 
+          title: 'Error al cargar privacidad',
+          onRetry: _loadSettings
+        );
+      }
     }
   }
 
   Future<void> _createDefaultSettings(String userId) async {
     try {
-      await _supabase.from('privacy_settings').insert({
+      await _supabase.from('configuracion_privacidad').insert({
         'user_id': userId,
         'profile_visibility': 'public',
         'message_permissions': 'everyone',
@@ -75,7 +86,8 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
         'show_in_search': true,
       });
     } catch (e) {
-      debugPrint('Error creating default settings: $e');
+      ErrorHandler.logError('PrivacySettingsScreen._createDefaultSettings', e);
+      rethrow;
     }
   }
 
@@ -85,17 +97,16 @@ class _PrivacySettingsScreenState extends State<PrivacySettingsScreen> {
 
     try {
       await _supabase
-          .from('privacy_settings')
+          .from('configuracion_privacidad')
           .update({field: value})
           .eq('user_id', userId);
     } catch (e) {
-      debugPrint('Error updating setting: $e');
+      ErrorHandler.logError('PrivacySettingsScreen._updateSetting', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al actualizar configuración'),
-            backgroundColor: AppConstants.errorColor,
-          ),
+        ErrorHandler.showErrorSnackBar(
+          context, 
+          e, 
+          customMessage: 'Error al actualizar privacidad'
         );
       }
     }

@@ -50,15 +50,15 @@ class _HireMusicianScreenState extends State<HireMusicianScreen> with SingleTick
 
       // Ofertas recibidas (donde yo soy el músico)
       final received = await _supabase
-          .from('hirings')
-          .select('*, employer:profiles!employer_id(nombre_artistico, foto_perfil)')
+          .from('contrataciones')
+          .select('*, employer:perfiles(nombre_artistico, foto_perfil)')
           .eq('musician_id', myId)
           .order('created_at', ascending: false);
 
       // Ofertas enviadas (donde yo soy el empleador)
       final sent = await _supabase
-          .from('hirings')
-          .select('*, musician:profiles!musician_id(nombre_artistico, foto_perfil)')
+          .from('contrataciones')
+          .select('*, musician:perfiles(nombre_artistico, foto_perfil)')
           .eq('employer_id', myId)
           .order('created_at', ascending: false);
 
@@ -87,7 +87,7 @@ class _HireMusicianScreenState extends State<HireMusicianScreen> with SingleTick
   Future<void> _respondToOffer(int hiringId, String action) async {
     try {
       await _supabase
-          .from('hirings')
+          .from('contrataciones')
           .update({'estado': action})
           .eq('id', hiringId);
 

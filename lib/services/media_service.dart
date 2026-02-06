@@ -155,6 +155,129 @@ class MediaService {
     }
   }
 
+  /// Upload multiple images at once
+  /// [imageFiles] - List of image files to upload
+  /// [userId] - User ID for organizing storage
+  /// [onProgress] - Optional callback for upload progress (0.0 to 1.0)
+  /// Returns list of URLs of uploaded images
+  Future<List<String>> uploadMultipleImages(
+    List<File> imageFiles,
+    String userId, {
+    Function(double)? onProgress,
+  }) async {
+    final urls = <String>[];
+    
+    try {
+      for (var i = 0; i < imageFiles.length; i++) {
+        final url = await uploadImage(imageFiles[i], userId);
+        urls.add(url);
+        
+        // Report progress
+        if (onProgress != null) {
+          final progress = (i + 1) / imageFiles.length;
+          onProgress(progress);
+        }
+      }
+      
+      return urls;
+    } catch (e) {
+      debugPrint('❌ Error uploading multiple images: $e');
+      rethrow;
+    }
+  }
+
+  /// Upload document file (PDF, DOC, etc.)
+  /// [documentFile] - Document file to upload
+  /// [userId] - User ID for organizing storage
+  /// Returns URL of uploaded document
+  Future<String> uploadDocument(File documentFile, String userId) async {
+    try {
+      // Validate file size (max 10MB)
+      if (!validateFileSize(documentFile, 10)) {
+        throw Exception('Document file exceeds 10MB limit');
+      }
+
+      // Validate file type
+      final allowedExtensions = ['pdf', 'doc', 'docx', 'txt'];
+      if (!validateFileType(documentFile, allowedExtensions)) {
+        throw Exception('Unsupported document format. Use pdf, doc, docx, or txt');
+      }
+
+      // Generate unique filename
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final extension = path.extension(documentFile.path);
+      final fileName = 'doc_${userId}_$timestamp$extension';
+      final filePath = 'messages/$userId/$fileName';
+
+      // Upload to Supabase Storage
+      await _supabase.storage.from('media').upload(
+            filePath,
+            documentFile,
+            fileOptions: const FileOptions(
+              cacheControl: '3600',
+              upsert: false,
+            ),
+          );
+
+      // Get public URL
+      final url = _supabase.storage.from('media').getPublicUrl(filePath);
+
+      return url;
+    } catch (e) {
+      debugPrint('❌ Error uploading document: $e');
+      rethrow;
+    }
+  }
+
+  /// Get human-readable file size
+  /// [file] - File to check
+  /// Returns formatted size string (e.g., "2.5 MB", "150 KB")
+  String getFormattedFileSize(File file) {
+    final sizeInBytes = file.lengthSync();
+    
+    if (sizeInBytes < 1024) {
+      return '$sizeInBytes B';
+    } else if (sizeInBytes < 1024 * 1024) {
+      final sizeInKB = sizeInBytes / 1024;
+      return '${sizeInKB.toStringAsFixed(1)} KB';
+    } else {
+      final sizeInMB = sizeInBytes / (1024 * 1024);
+      return '${sizeInMB.toStringAsFixed(1)} MB';
+    }
+  }
+
+  /// Check if file is an image
+  /// [file] - File to check
+  /// Returns true if file is an image
+  bool isImage(File file) {
+    final imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    return validateFileType(file, imageExtensions);
+  }
+
+  /// Check if file is an audio
+  /// [file] - File to check
+  /// Returns true if file is audio
+  bool isAudio(File file) {
+    final audioExtensions = ['mp3', 'wav', 'm4a', 'aac', 'ogg'];
+    return validateFileType(file, audioExtensions);
+  }
+
+  /// Check if file is a video
+  /// [file] - File to check
+  /// Returns true if file is video
+  bool isVideo(File file) {
+    final videoExtensions = ['mp4', 'mov', 'avi', 'mkv'];
+    return validateFileType(file, videoExtensions);
+  }
+
+  /// Check if file is a document
+  /// [file] - File to check
+  /// Returns true if file is a document
+  bool isDocument(File file) {
+    final docExtensions = ['pdf', 'doc', 'docx', 'txt', 'xls', 'xlsx'];
+    return validateFileType(file, docExtensions);
+  }
+
   /// Upload video file (for portfolio)
   /// [videoFile] - Video file to upload
   /// [userId] - User ID for organizing storage
@@ -248,7 +371,7 @@ class MediaService {
 
       // Delete from database
       await _supabase
-          .from('portfolio_media')
+          .from('archivos_multimedia')
           .delete()
           .eq('id', mediaId);
 
@@ -265,7 +388,7 @@ class MediaService {
   Future<void> updatePortfolioMedia(int mediaId, String titulo) async {
     try {
       await _supabase
-          .from('portfolio_media')
+          .from('archivos_multimedia')
           .update({'titulo': titulo})
           .eq('id', mediaId);
 

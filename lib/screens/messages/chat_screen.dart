@@ -8,12 +8,14 @@ import 'package:file_picker/file_picker.dart';
 import '../../models/message.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import '../../services/realtime_service.dart';
 import '../../services/media_service.dart';
 import '../../widgets/media_message_bubble.dart';
 import '../../widgets/image_viewer.dart';
 import '../../widgets/audio_player_widget.dart';
 import 'package:intl/intl.dart';
+import 'package:animate_do/animate_do.dart';
 import '../reports/report_content_screen.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -40,8 +42,11 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _otherUserTyping = false;
   bool _isUploading = false;
   double _uploadProgress = 0.0;
+  final Set<String> _messageIds = {}; // Para búsqueda O(1) de duplicados
   Timer? _typingTimer;
   StreamSubscription? _typingSubscription;
+  StreamSubscription? _connectionSubscription;
+  RealtimeConnectionState _realtimeConnectionState = RealtimeConnectionState.disconnected;
 
   @override
   void initState() {
@@ -59,6 +64,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _realtimeService.dispose();
     _typingTimer?.cancel();
     _typingSubscription?.cancel();
+    _connectionSubscription?.cancel();
     _messageController.removeListener(_onTypingChanged);
     _messageController.dispose();
     _scrollController.dispose();
@@ -95,6 +101,7 @@ class _ChatScreenState extends State<ChatScreen> {
           .select()
           .or('and(usuario_id.eq.$myId,bloqueado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},bloqueado_id.eq.$myId)')
           .eq('activo', true)
+          .limit(1)
           .maybeSingle();
 
       if (blockData != null) {
@@ -109,10 +116,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
       // Check if there's an accepted connection
       final connectionData = await _supabase
-          .from('connections')
+          .from('conexiones')
           .select()
           .or('and(usuario_id.eq.$myId,conectado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},conectado_id.eq.$myId)')
           .eq('estatus', 'accepted')
+          .limit(1)
           .maybeSingle();
 
       if (mounted) {
@@ -142,6 +150,15 @@ class _ChatScreenState extends State<ChatScreen> {
     final myId = _supabase.auth.currentUser?.id;
     if (myId == null) return;
 
+    // Listen to connection state changes
+    _connectionSubscription = _realtimeService.connectionState.listen((state) {
+      if (mounted) {
+        setState(() {
+          _realtimeConnectionState = state;
+        });
+      }
+    });
+
     // Subscribe to conversation messages
     await _realtimeService.subscribeToConversation(
       myId,
@@ -149,18 +166,18 @@ class _ChatScreenState extends State<ChatScreen> {
       (newMessage) {
         final message = Message.fromJson(newMessage);
         if (mounted) {
-          setState(() {
-            // Check if message already exists
-            final exists = _messages.any((m) => m.id == message.id);
-            if (!exists) {
+          // Optimización: Búsqueda O(1) con Set
+          if (!_messageIds.contains(message.id)) {
+            setState(() {
+              _messageIds.add(message.id);
               _messages.add(message);
               _scrollToBottom();
+            });
+            
+            // Mark as read if from other user
+            if (message.senderId == widget.userId) {
+              _realtimeService.markMessageAsRead(message.id.toString());
             }
-          });
-
-          // Mark as read if from other user
-          if (message.senderId == widget.userId) {
-            _realtimeService.markMessageAsRead(message.id.toString());
           }
         }
       },
@@ -197,20 +214,25 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final data = await _supabase
-          .from('intercom')
+          .from('conversaciones')
           .select()
           .or('and(remitente_id.eq.$myId,destinatario_id.eq.${widget.userId}),and(remitente_id.eq.${widget.userId},destinatario_id.eq.$myId)')
           .order('created_at', ascending: true);
 
       if (mounted) {
         setState(() {
-          _messages = data.map((m) => Message.fromJson(m)).toList();
+          _messages = (data as List).map((m) => Message.fromJson(m)).toList();
+          _messageIds.addAll(_messages.map((m) => m.id));
           _isLoading = false;
         });
         _scrollToBottom();
       }
     } catch (e) {
-      debugPrint('Error loading messages: $e');
+      ErrorHandler.logError('ChatScreen._loadMessages', e);
+      // No mostrar diálogo intrusivo mientras se chatea, usar SnackBar solo si NO es error de red
+      if (!ErrorHandler.isNetworkError(e) && mounted) {
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al cargar mensajes');
+      }
       if (mounted) setState(() => _isLoading = false);
     }
   }
@@ -229,41 +251,46 @@ class _ChatScreenState extends State<ChatScreen> {
     final myId = _supabase.auth.currentUser?.id;
     if (myId == null) return;
 
+    if (myId == widget.userId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No puedes enviarte mensajes a ti mismo'))
+      );
+      return;
+    }
+
     _messageController.clear();
     
     try {
       // Insert message
-      await _supabase.from('intercom').insert({
+      final response = await _supabase.from('conversaciones').insert({
         'remitente_id': myId,
         'destinatario_id': widget.userId,
-        'riff_text': text,
+        'contenido': text,
         'delivered_at': DateTime.now().toIso8601String(),
-      });
+      }).select().single();
 
-      // Create notification
-      try {
-        final myProfile = await _supabase
-            .from('profiles')
-            .select('nombre_artistico')
-            .eq('id', myId)
-            .single();
-
-        await _supabase.from('notifications').insert({
-          'user_id': widget.userId,
-          'tipo': 'new_message',
-          'titulo': 'Nuevo mensaje',
-          'mensaje': '${myProfile['nombre_artistico']} te envió un mensaje',
-          'leido': false,
-          'data': {'sender_id': myId, 'conversation_id': widget.userId},
-        });
-      } catch (notifError) {
-        debugPrint('Error creating notification: $notifError');
-      }
-    } catch (e) {
+      // Agregar mensaje a la lista local inmediatamente para feedback instantáneo
+      final newMessage = Message.fromJson(response);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al enviar mensaje')),
-        );
+        if (!_messageIds.contains(newMessage.id)) {
+          setState(() {
+            _messageIds.add(newMessage.id);
+            _messages.add(newMessage);
+            _scrollToBottom();
+          });
+        }
+      }
+
+      // Notificación en segundo plano (sin esperar respuesta para evitar lag)
+      _supabase.rpc('handle_new_message_notification', params: {
+        'p_sender_id': myId,
+        'p_receiver_id': widget.userId,
+        'p_content': text
+      }).then((_) {}).catchError((e) => debugPrint('Error notification: $e'));
+    } catch (e) {
+      ErrorHandler.logError('ChatScreen._sendMessage', e);
+      if (mounted) {
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al enviar mensaje');
       }
     }
   }
@@ -274,35 +301,65 @@ class _ChatScreenState extends State<ChatScreen> {
 
     try {
       final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(source: ImageSource.gallery);
       
-      if (image == null) return;
+      // Allow multiple image selection
+      final List<XFile> images = await picker.pickMultiImage();
+      
+      if (images.isEmpty) return;
+
+      // Show preview dialog
+      final shouldSend = await _showImagePreviewDialog(images);
+      if (shouldSend != true) return;
 
       setState(() {
         _isUploading = true;
         _uploadProgress = 0.0;
       });
 
-      // Upload image
-      final imageFile = File(image.path);
-      final imageUrl = await _mediaService.uploadImage(imageFile, myId);
+      // Upload images
+      final imageFiles = images.map((xFile) => File(xFile.path)).toList();
+      final imageUrls = await _mediaService.uploadMultipleImages(
+        imageFiles,
+        myId,
+        onProgress: (progress) {
+          if (mounted) {
+            setState(() {
+              _uploadProgress = progress * 0.8; // 80% for upload
+            });
+          }
+        },
+      );
 
       setState(() {
-        _uploadProgress = 0.5;
+        _uploadProgress = 0.9;
       });
 
-      // Send message with image
+      // Send messages with images
       final text = _messageController.text.trim();
       _messageController.clear();
 
-      await _supabase.from('intercom').insert({
-        'remitente_id': myId,
-        'destinatario_id': widget.userId,
-        'riff_text': text,
-        'media_url': imageUrl,
-        'media_type': 'image',
-        'delivered_at': DateTime.now().toIso8601String(),
-      });
+      for (var i = 0; i < imageUrls.length; i++) {
+        final response = await _supabase.from('conversaciones').insert({
+          'remitente_id': myId,
+          'destinatario_id': widget.userId,
+          'contenido': i == 0 ? text : '', // Only first message has text
+          'media_url': imageUrls[i],
+          'media_type': 'image',
+          'delivered_at': DateTime.now().toIso8601String(),
+        }).select().single();
+
+        // Agregar a la lista local inmediatamente
+        final newMessage = Message.fromJson(response);
+        if (mounted) {
+          if (!_messageIds.contains(newMessage.id)) {
+            setState(() {
+              _messageIds.add(newMessage.id);
+              _messages.add(newMessage);
+              _scrollToBottom();
+            });
+          }
+        }
+      }
 
       setState(() {
         _isUploading = false;
@@ -312,16 +369,20 @@ class _ChatScreenState extends State<ChatScreen> {
       // Create notification
       try {
         final myProfile = await _supabase
-            .from('profiles')
+            .from('perfiles')
             .select('nombre_artistico')
             .eq('id', myId)
             .single();
 
-        await _supabase.from('notifications').insert({
+        final imageText = imageUrls.length > 1 
+            ? 'te envió ${imageUrls.length} imágenes'
+            : 'te envió una imagen';
+
+        await _supabase.from('notificaciones').insert({
           'user_id': widget.userId,
           'tipo': 'new_message',
           'titulo': 'Nuevo mensaje',
-          'mensaje': '${myProfile['nombre_artistico']} te envió una imagen',
+          'mensaje': '${myProfile['nombre_artistico']} $imageText',
           'leido': false,
           'data': {'sender_id': myId, 'conversation_id': widget.userId},
         });
@@ -329,17 +390,238 @@ class _ChatScreenState extends State<ChatScreen> {
         debugPrint('Error creating notification: $notifError');
       }
     } catch (e) {
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 0.0;
-      });
-      
+      ErrorHandler.logError('ChatScreen._pickAndSendImage', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar imagen: ${e.toString()}')),
-        );
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al enviar imagen');
       }
     }
+  }
+
+  Future<bool?> _showImagePreviewDialog(List<XFile> images) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          images.length > 1 
+              ? 'Enviar ${images.length} imágenes'
+              : 'Enviar imagen',
+          style: GoogleFonts.outfit(
+            color: ThemeColors.primaryText(context),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 300,
+          child: images.length == 1
+              ? ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(
+                    File(images[0].path),
+                    fit: BoxFit.contain,
+                  ),
+                )
+              : GridView.builder(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
+                  ),
+                  itemCount: images.length,
+                  itemBuilder: (context, index) {
+                    return ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(images[index].path),
+                        fit: BoxFit.cover,
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text('Enviar', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickAndSendDocument() async {
+    final myId = _supabase.auth.currentUser?.id;
+    if (myId == null) return;
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['pdf', 'doc', 'docx', 'txt'],
+        allowMultiple: false,
+      );
+      
+      if (result == null || result.files.isEmpty) return;
+
+      final file = File(result.files.first.path!);
+      
+      // Show file info
+      final fileSize = _mediaService.getFormattedFileSize(file);
+      final fileName = result.files.first.name;
+      
+      final shouldSend = await _showDocumentPreviewDialog(fileName, fileSize);
+      if (shouldSend != true) return;
+
+      setState(() {
+        _isUploading = true;
+        _uploadProgress = 0.0;
+      });
+
+      // Upload document
+      final documentUrl = await _mediaService.uploadDocument(file, myId);
+
+      setState(() {
+        _uploadProgress = 0.5;
+      });
+
+      // Send message with document
+      final text = _messageController.text.trim();
+      _messageController.clear();
+
+      final response = await _supabase.from('conversaciones').insert({
+        'remitente_id': myId,
+        'destinatario_id': widget.userId,
+        'contenido': text.isEmpty ? fileName : text,
+        'media_url': documentUrl,
+        'media_type': 'document',
+        'delivered_at': DateTime.now().toIso8601String(),
+      }).select().single();
+
+      // Update local UI
+      final newMessage = Message.fromJson(response);
+      if (mounted) {
+        if (!_messageIds.contains(newMessage.id)) {
+          setState(() {
+            _messageIds.add(newMessage.id);
+            _messages.add(newMessage);
+            _scrollToBottom();
+          });
+        }
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+      }
+
+      // Create notification
+      try {
+        final myProfile = await _supabase
+            .from('perfiles')
+            .select('nombre_artistico')
+            .eq('id', myId)
+            .single();
+
+        await _supabase.from('notificaciones').insert({
+          'user_id': widget.userId,
+          'tipo': 'new_message',
+          'titulo': 'Nuevo mensaje',
+          'mensaje': '${myProfile['nombre_artistico']} te envió un documento',
+          'leido': false,
+          'data': {'sender_id': myId, 'conversation_id': widget.userId},
+        });
+      } catch (notifError) {
+        debugPrint('Error creating notification: $notifError');
+      }
+    } catch (e) {
+      ErrorHandler.logError('ChatScreen._pickAndSendDocument', e);
+      if (mounted) {
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al enviar documento');
+      }
+    }
+  }
+
+  Future<bool?> _showDocumentPreviewDialog(String fileName, String fileSize) async {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Enviar documento',
+          style: GoogleFonts.outfit(
+            color: ThemeColors.primaryText(context),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.description,
+              size: 64,
+              color: AppConstants.primaryColor,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              fileName,
+              style: GoogleFonts.outfit(
+                color: ThemeColors.primaryText(context),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              fileSize,
+              style: GoogleFonts.outfit(
+                color: ThemeColors.secondaryText(context),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(
+              'Cancelar',
+              style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppConstants.primaryColor,
+              foregroundColor: Colors.black,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: Text('Enviar', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _pickAndSendAudio() async {
@@ -377,29 +659,40 @@ class _ChatScreenState extends State<ChatScreen> {
       final text = _messageController.text.trim();
       _messageController.clear();
 
-      await _supabase.from('intercom').insert({
+      final response = await _supabase.from('conversaciones').insert({
         'remitente_id': myId,
         'destinatario_id': widget.userId,
-        'riff_text': text,
+        'contenido': text,
         'media_url': audioUrl,
         'media_type': 'audio',
         'delivered_at': DateTime.now().toIso8601String(),
-      });
+      }).select().single();
 
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 0.0;
-      });
+      // Update local UI
+      final newMessage = Message.fromJson(response);
+      if (mounted) {
+        if (!_messageIds.contains(newMessage.id)) {
+          setState(() {
+            _messageIds.add(newMessage.id);
+            _messages.add(newMessage);
+            _scrollToBottom();
+          });
+        }
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+      }
 
       // Create notification
       try {
         final myProfile = await _supabase
-            .from('profiles')
+            .from('perfiles')
             .select('nombre_artistico')
             .eq('id', myId)
             .single();
 
-        await _supabase.from('notifications').insert({
+        await _supabase.from('notificaciones').insert({
           'user_id': widget.userId,
           'tipo': 'new_message',
           'titulo': 'Nuevo mensaje',
@@ -411,15 +704,13 @@ class _ChatScreenState extends State<ChatScreen> {
         debugPrint('Error creating notification: $notifError');
       }
     } catch (e) {
-      setState(() {
-        _isUploading = false;
-        _uploadProgress = 0.0;
-      });
-      
+      ErrorHandler.logError('ChatScreen._pickAndSendAudio', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al enviar audio: ${e.toString()}')),
-        );
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al enviar audio');
       }
     }
   }
@@ -561,17 +852,36 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            widget.userName,
-            style: GoogleFonts.outfit(
-              color: ThemeColors.primaryText(context), 
-              fontWeight: FontWeight.bold, 
-              fontSize: 18,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  widget.userName,
+                  style: GoogleFonts.outfit(
+                    color: ThemeColors.primaryText(context), 
+                    fontWeight: FontWeight.bold, 
+                    fontSize: 16,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                _buildConnectionIndicator(),
+              ],
             ),
           ),
         ],
       ),
       actions: [
+        // Reconnect button (only show if disconnected)
+        if (_realtimeConnectionState == RealtimeConnectionState.error ||
+            _realtimeConnectionState == RealtimeConnectionState.failed)
+          IconButton(
+            icon: Icon(Icons.refresh, color: Colors.orange),
+            onPressed: () => _realtimeService.reconnect(),
+            tooltip: 'Reconectar',
+          ),
         PopupMenuButton<String>(
           icon: Icon(Icons.more_vert, color: ThemeColors.icon(context)),
           color: Theme.of(context).cardColor,
@@ -602,6 +912,56 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             ),
           ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConnectionIndicator() {
+    String text;
+    Color color;
+    
+    switch (_realtimeConnectionState) {
+      case RealtimeConnectionState.connected:
+        text = 'En línea';
+        color = Colors.green;
+        break;
+      case RealtimeConnectionState.connecting:
+        text = 'Conectando...';
+        color = Colors.orange;
+        break;
+      case RealtimeConnectionState.error:
+        text = 'Error de conexión';
+        color = Colors.red;
+        break;
+      case RealtimeConnectionState.failed:
+        text = 'Desconectado';
+        color = Colors.red;
+        break;
+      case RealtimeConnectionState.disconnected:
+      default:
+        return const SizedBox.shrink();
+    }
+    
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: GoogleFonts.outfit(
+            color: color,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ],
     );
@@ -662,35 +1022,108 @@ class _ChatScreenState extends State<ChatScreen> {
         final msg = _messages[index];
         final isMe = msg.senderId == myId;
         
-        // Use media bubble if message has media
-        if (msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty) {
-          return MediaMessageBubble(
-            message: msg,
-            isMe: isMe,
-            onImageTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ImageViewer(
-                    imageUrl: msg.mediaUrl!,
-                    caption: msg.content,
-                  ),
-                ),
-              );
-            },
-            onAudioTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => AudioPlayerWidget(audioUrl: msg.mediaUrl!),
-                ),
-              );
-            },
-          );
-        }
+        // Show date separator if needed
+        final showDateSeparator = _shouldShowDateSeparator(index);
         
-        return _MessageBubble(message: msg, isMe: isMe);
+        // OPTIMIZACIÓN: Eliminamos FadeInUp de toda la lista para evitar stuttering
+        // Solo animamos si es el último mensaje y acaba de llegar
+        final isLast = index == _messages.length - 1;
+        
+        Widget bubble = msg.mediaUrl != null && msg.mediaUrl!.isNotEmpty
+            ? MediaMessageBubble(
+                message: msg,
+                isMe: isMe,
+                onImageTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ImageViewer(
+                        imageUrl: msg.mediaUrl!,
+                        caption: msg.content,
+                      ),
+                    ),
+                  );
+                },
+                onAudioTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => AudioPlayerWidget(audioUrl: msg.mediaUrl!),
+                    ),
+                  );
+                },
+              )
+            : _MessageBubble(message: msg, isMe: isMe);
+
+        if (isLast && !isMe) {
+          bubble = FadeInRight(duration: const Duration(milliseconds: 200), child: bubble);
+        }
+
+        return Column(
+          children: [
+            if (showDateSeparator) _buildDateSeparator(msg.sentAt),
+            bubble,
+          ],
+        );
       },
+    );
+  }
+
+  bool _shouldShowDateSeparator(int index) {
+    if (index == 0) return true;
+    
+    final currentMsg = _messages[index];
+    final previousMsg = _messages[index - 1];
+    
+    final currentDate = DateTime(
+      currentMsg.sentAt.year,
+      currentMsg.sentAt.month,
+      currentMsg.sentAt.day,
+    );
+    
+    final previousDate = DateTime(
+      previousMsg.sentAt.year,
+      previousMsg.sentAt.month,
+      previousMsg.sentAt.day,
+    );
+    
+    return !currentDate.isAtSameMomentAs(previousDate);
+  }
+
+  Widget _buildDateSeparator(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final messageDate = DateTime(date.year, date.month, date.day);
+    
+    String dateText;
+    if (messageDate.isAtSameMomentAs(today)) {
+      dateText = 'Hoy';
+    } else if (messageDate.isAtSameMomentAs(yesterday)) {
+      dateText = 'Ayer';
+    } else {
+      dateText = DateFormat('dd MMMM yyyy', 'es').format(date);
+    }
+    
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
+      child: Row(
+        children: [
+          Expanded(child: Divider(color: ThemeColors.divider(context))),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              dateText,
+              style: GoogleFonts.outfit(
+                color: ThemeColors.secondaryText(context),
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(child: Divider(color: ThemeColors.divider(context))),
+        ],
+      ),
     );
   }
 
@@ -726,20 +1159,18 @@ class _ChatScreenState extends State<ChatScreen> {
                   ],
                 ),
               ),
+
+          // Action Menu Helper
+          _buildActionMenu(),
             
             // Input row
             Row(
               children: [
-                // Image button
+                // Single Action Button for all media
                 IconButton(
-                  icon: Icon(Icons.image, color: ThemeColors.icon(context)),
-                  onPressed: _isUploading ? null : _pickAndSendImage,
-                ),
-                
-                // Audio button
-                IconButton(
-                  icon: Icon(Icons.mic, color: ThemeColors.icon(context)),
-                  onPressed: _isUploading ? null : _pickAndSendAudio,
+                  icon: const Icon(Icons.add_circle_outline, color: AppConstants.primaryColor, size: 28),
+                  onPressed: _isUploading ? null : () => _showAttachmentOptions(context),
+                  tooltip: 'Adjuntar archivo',
                 ),
                 
                 const SizedBox(width: 8),
@@ -761,8 +1192,12 @@ class _ChatScreenState extends State<ChatScreen> {
                         hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        filled: false,
+                        fillColor: Colors.transparent,
                       ),
                       onSubmitted: (_) => _sendMessage(),
+                      maxLines: null,
+                      textCapitalization: TextCapitalization.sentences,
                     ),
                   ),
                 ),
@@ -790,6 +1225,90 @@ class _ChatScreenState extends State<ChatScreen> {
       ),
     );
   }
+
+  void _showAttachmentOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildActionItem(
+                  icon: Icons.image,
+                  color: Colors.blue,
+                  label: 'Galería',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendImage();
+                  },
+                ),
+                _buildActionItem(
+                  icon: Icons.attach_file,
+                  color: Colors.orange,
+                  label: 'Archivo',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendDocument();
+                  },
+                ),
+                _buildActionItem(
+                  icon: Icons.mic,
+                  color: Colors.red,
+                  label: 'Audio',
+                  onTap: () {
+                    Navigator.pop(context);
+                    _pickAndSendAudio();
+                  },
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionItem({
+    required IconData icon,
+    required Color color,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: color.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: color, size: 28),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: GoogleFonts.outfit(
+              color: ThemeColors.primaryText(context),
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionMenu() => const SizedBox.shrink();
 }
 
 class _MessageBubble extends StatelessWidget {
@@ -798,13 +1317,19 @@ class _MessageBubble extends StatelessWidget {
 
   const _MessageBubble({required this.message, required this.isMe});
 
+  String _formatTimestamp(DateTime timestamp) {
+    // Asegurar que estamos trabajando con la hora local
+    final localTime = timestamp.toLocal();
+    return DateFormat('HH:mm').format(localTime);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
           color: isMe ? AppConstants.primaryColor : Theme.of(context).cardColor,
@@ -814,35 +1339,139 @@ class _MessageBubble extends StatelessWidget {
             bottomLeft: Radius.circular(isMe ? 20 : 4),
             bottomRight: Radius.circular(isMe ? 4 : 20),
           ),
-          border: isMe ? null : Border.all(color: ThemeColors.divider(context)),
+          border: Border.all(
+            color: Theme.of(context).brightness == Brightness.light && !isMe 
+                ? ThemeColors.divider(context) 
+                : Colors.transparent,
+            width: 0.5,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.3 : 0.06),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
-            Text(
-              message.content,
-              style: GoogleFonts.outfit(
-                color: isMe ? Colors.black : ThemeColors.primaryText(context),
-                fontSize: 15,
-                fontWeight: isMe ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  DateFormat('HH:mm').format(message.sentAt),
-                  style: GoogleFonts.outfit(
-                    color: isMe ? Colors.black.withOpacity(0.5) : ThemeColors.secondaryText(context),
-                    fontSize: 10,
+            if (message.mediaUrl != null) ...[
+              if (message.mediaType == 'image')
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.network(
+                    message.mediaUrl!,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        height: 200,
+                        width: double.infinity,
+                        alignment: Alignment.center,
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                              : null,
+                          color: isMe ? Colors.black : AppConstants.primaryColor,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      debugPrint('❌ ERROR loading image from: ${message.mediaUrl}');
+                      debugPrint('   Error: $error');
+                      return Container(
+                        height: 150,
+                        width: double.infinity,
+                        color: Colors.black12,
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline, color: Colors.red),
+                            const SizedBox(height: 8),
+                            Text('Error al cargar imagen', 
+                              style: GoogleFonts.outfit(fontSize: 12, color: ThemeColors.secondaryText(context))),
+                          ],
+                        ),
+                      );
+                    },
                   ),
+                )
+              else if (message.mediaType == 'audio')
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.play_circle_fill, 
+                      color: isMe ? Colors.black : AppConstants.primaryColor, size: 38), // Icono más grande
+                    const SizedBox(width: 10),
+                    Text('Mensaje de voz', 
+                      style: GoogleFonts.outfit(
+                        color: isMe ? Colors.black : ThemeColors.primaryText(context),
+                        fontWeight: FontWeight.bold, // Texto del audio en negrita
+                        fontSize: 15,
+                      )),
+                  ],
+                )
+              else
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.insert_drive_file, 
+                      color: isMe ? Colors.black : AppConstants.primaryColor, size: 28),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text('Documento', 
+                        style: GoogleFonts.outfit(
+                          color: isMe ? Colors.black : ThemeColors.primaryText(context),
+                          decoration: TextDecoration.underline,
+                          fontWeight: FontWeight.bold, // Documento en negrita
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-                if (isMe) ...[
-                  const SizedBox(width: 4),
-                  _buildStatusIcon(context),
+              const SizedBox(height: 8),
+            ],
+            if (message.content.isNotEmpty)
+              Text(
+                message.content,
+                style: GoogleFonts.outfit(
+                  color: isMe ? Colors.white : ThemeColors.primaryText(context),
+                  fontSize: 15,
+                  fontWeight: isMe ? FontWeight.w600 : FontWeight.w500,
+                  height: 1.3,
+                ),
+              ),
+            const SizedBox(height: 6),
+            // El reloj ahora se posiciona por el CrossAxisAlignment de la columna, no por un Align expansivo
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: isMe 
+                    ? Colors.black.withOpacity(0.2)
+                    : Theme.of(context).brightness == Brightness.dark 
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.black.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _formatTimestamp(message.sentAt),
+                    style: GoogleFonts.outfit(
+                      color: isMe ? Colors.white : ThemeColors.secondaryText(context),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 4),
+                    _buildStatusIcon(context),
+                  ],
                 ],
-              ],
+              ),
             ),
           ],
         ),
@@ -851,26 +1480,31 @@ class _MessageBubble extends StatelessWidget {
   }
 
   Widget _buildStatusIcon(BuildContext context) {
-    switch (message.status) {
-      case 'read':
-        return const Icon(
-          Icons.done_all,
-          size: 14,
-          color: AppConstants.primaryColor,
-        );
-      case 'delivered':
-        return Icon(
-          Icons.done_all,
-          size: 14,
-          color: Colors.black.withOpacity(0.5),
-        );
-      case 'sent':
-      default:
-        return Icon(
-          Icons.done,
-          size: 14,
-          color: Colors.black.withOpacity(0.5),
-        );
+    final statusColor = isMe ? Colors.white : Colors.black.withOpacity(0.7);
+    
+    // Check if message has been read
+    if (message.readAt != null) {
+      return Icon(
+        Icons.done_all,
+        size: 14,
+        color: isMe ? Colors.white : AppConstants.primaryColor,
+      );
     }
+    
+    // Check if message has been delivered
+    if (message.deliveredAt != null) {
+      return Icon(
+        Icons.done_all,
+        size: 14,
+        color: statusColor,
+      );
+    }
+    
+    // Message sent but not delivered yet
+    return Icon(
+      Icons.done,
+      size: 14,
+      color: statusColor,
+    );
   }
 }

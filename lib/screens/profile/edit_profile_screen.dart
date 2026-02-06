@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import '../../services/storage_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -65,7 +66,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isLoading = true);
     try {
       final data = await _supabase
-          .from('profiles')
+          .from('perfiles')
           .select()
           .eq('id', userId)
           .single();
@@ -107,7 +108,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       // Cargar géneros musicales
       try {
         final genresData = await _supabase
-            .from('profile_genres')
+            .from('generos_perfil')
             .select('genre')
             .eq('profile_id', userId);
         
@@ -115,7 +116,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _selectedGenres = (genresData as List).map((g) => g['genre'].toString()).toList();
         });
       } catch (e) {
-        debugPrint('Genres not loaded: $e');
+        ErrorHandler.logError('EditProfileScreen._loadGenres', e);
+        // No mostrar error, géneros son opcionales
       }
 
       // Cargar Gear (Mi Equipo)
@@ -131,11 +133,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           _gearController.text = gearNames.join(', ');
         });
       } catch (e) {
-        debugPrint('Gear not loaded: $e');
+        ErrorHandler.logError('EditProfileScreen._loadGear', e);
+        // No mostrar error, gear es opcional
       }
     } catch (e) {
-      debugPrint('Error loading profile: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('EditProfileScreen._loadProfile', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando perfil',
+          onRetry: _loadProfile,
+        );
+      }
     }
   }
 
@@ -196,6 +207,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         debugPrint('SAVE: Avatar uploaded: $finalAvatarUrl');
       }
 
+      // 1.1. Auto-agregar texto de equipo pendiente si existe
+      final pendingGear = _gearController.text.trim();
+      if (pendingGear.isNotEmpty && !_gearList.contains(pendingGear) && _gearList.length < MAX_GEAR) {
+        _gearList.add(pendingGear);
+        debugPrint('SAVE: Auto-added pending gear: $pendingGear');
+      }
+
       // 2. Preparar social links
       final socialLinks = {
         'instagram': _instagramController.text.trim(),
@@ -211,7 +229,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       final yearsExp = int.tryParse(_experienceController.text.trim()) ?? 0;
       final baseRate = double.tryParse(_rateController.text.trim()) ?? 0.0;
       
-      final response = await _supabase.from('profiles').update({
+      final response = await _supabase.from('perfiles').update({
         'nombre_artistico': _nameController.text.trim(),
         'bio': _bioController.text.trim(),
         'ubicacion': _locationController.text.trim(),
@@ -230,7 +248,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       if (_selectedGenres.isNotEmpty) {
         debugPrint('SAVE: Updating genres...');
         // Borrar géneros existentes
-        await _supabase.from('profile_genres').delete().eq('profile_id', userId);
+        await _supabase.from('generos_perfil').delete().eq('profile_id', userId);
         
         // Insertar nuevos géneros
         final genreRecords = _selectedGenres.map((genre) => {
@@ -238,7 +256,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           'genre': genre,
         }).toList();
         
-        await _supabase.from('profile_genres').insert(genreRecords);
+        await _supabase.from('generos_perfil').insert(genreRecords);
         debugPrint('SAVE: Genres updated successfully');
       }
 
@@ -252,14 +270,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         await _supabase.from('perfil_gear').delete().eq('perfil_id', userId);
         
         for (var name in _gearList) {
-          var catalogItem = await _supabase.from('gear_catalog').select().ilike('nombre', name).maybeSingle();
+          var catalogItem = await _supabase
+              .from('gear_catalog')
+              .select()
+              .ilike('nombre', name)
+              .limit(1)
+              .maybeSingle();
           
-          String gearId;
+          Object gearId;
           if (catalogItem == null) {
             final newItem = await _supabase.from('gear_catalog').insert({'nombre': name}).select().single();
-            gearId = newItem['id'].toString();
+            gearId = newItem['id'];
           } else {
-            gearId = catalogItem['id'].toString();
+            gearId = catalogItem['id'];
           }
           
           await _supabase.from('perfil_gear').insert({
@@ -292,21 +315,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      debugPrint('SAVE ERROR: $e');
+      ErrorHandler.logError('EditProfileScreen._save', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(child: Text('Error: $e', style: GoogleFonts.outfit())),
-              ],
-            ),
-            backgroundColor: Colors.red[700],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error guardando perfil',
+          onRetry: _save,
         );
       }
     } finally {

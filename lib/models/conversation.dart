@@ -4,7 +4,7 @@ class Conversation {
   final String? interlocutorPhoto;
   final String lastMessage; 
   final DateTime lastDate; 
-  final int unreadCount; 
+  int unreadCount; 
 
   Conversation({
     required this.interlocutorId,
@@ -20,7 +20,7 @@ class Conversation {
       interlocutorId: json['interlocutor_id']?.toString() ?? '',
       interlocutorName: json['interlocutor_nombre'] ?? 'Artista',
       interlocutorPhoto: json['interlocutor_foto'],
-      lastMessage: json['riff_text'] ?? json['ultimo_mensaje'] ?? '',
+      lastMessage: json['contenido'] ?? json['ultimo_mensaje'] ?? '',
       lastDate: DateTime.tryParse(json['ultima_fecha'] ?? json['fecha_envio'] ?? '') ?? DateTime.now(),
       unreadCount: int.tryParse(json['mensajes_no_leidos']?.toString() ?? '0') ?? 0,
     );

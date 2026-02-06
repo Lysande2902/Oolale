@@ -93,6 +93,8 @@ class _EventInvitationsScreenState extends State<EventInvitationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final pendingCount = _invitations.length;
+    
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: AppBar(
@@ -102,9 +104,23 @@ class _EventInvitationsScreenState extends State<EventInvitationsScreen> {
           icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Invitaciones a Eventos',
-          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Invitaciones a Eventos',
+              style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+            if (pendingCount > 0)
+              Text(
+                '$pendingCount pendiente${pendingCount != 1 ? 's' : ''}',
+                style: GoogleFonts.outfit(
+                  fontSize: 12,
+                  color: AppConstants.primaryColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+          ],
         ),
       ),
       body: _isLoading
@@ -160,8 +176,8 @@ class _EventInvitationsScreenState extends State<EventInvitationsScreen> {
         itemCount: _invitations.length,
         itemBuilder: (context, index) {
           final invitation = _invitations[index];
-          final event = invitation['gigs'];
-          final organizer = invitation['profiles'];
+          final event = invitation['eventos'];
+          final organizer = invitation['perfiles'];
           final invitationId = invitation['id'];
           final isProcessing = _processingInvitations.contains(invitationId);
 

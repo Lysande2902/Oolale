@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 class LeaveRatingScreen extends StatefulWidget {
   final String userId;
@@ -86,7 +87,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
       // NUEVA LÓGICA: Verificar si son conexiones aceptadas
       // Esto es más flexible que solo verificar eventos compartidos
       final connectionData = await _supabase
-          .from('connections')
+          .from('conexiones')
           .select()
           .or('and(usuario_id.eq.$myId,conectado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},conectado_id.eq.$myId)')
           .eq('estatus', 'accepted')
@@ -99,18 +100,18 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
       bool workedTogether = false;
       if (areConnected) {
         final gigsData = await _supabase
-            .from('gig_lineup')
-            .select('gig_id')
-            .eq('perfil_id', myId);
+            .from('participantes_evento')
+            .select('event_id')
+            .eq('user_id', myId);
 
         if (gigsData.isNotEmpty) {
-          final gigIds = gigsData.map((g) => g['gig_id']).toList();
+          final gigIds = gigsData.map((g) => g['event_id']).toList();
 
           final sharedGigs = await _supabase
-              .from('gig_lineup')
-              .select('gig_id')
-              .eq('perfil_id', widget.userId)
-              .inFilter('gig_id', gigIds);
+              .from('participantes_evento')
+              .select('event_id')
+              .eq('user_id', widget.userId)
+              .inFilter('event_id', gigIds);
 
           workedTogether = sharedGigs.isNotEmpty;
         }
@@ -123,7 +124,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error verificando conexión: $e');
+      ErrorHandler.logError('LeaveRatingScreen._checkIfWorkedTogether', e);
       if (mounted) {
         setState(() {
           _hasWorkedTogether = false;
@@ -175,7 +176,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
       // Crear notificación solo si es nueva calificación
       if (!_isEditMode) {
         try {
-          await _supabase.from('notifications').insert({
+          await _supabase.from('notificaciones').insert({
             'user_id': widget.userId,
             'tipo': 'new_rating',
             'titulo': 'Nueva calificación',
@@ -184,7 +185,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
             'data': {'sender_id': myId, 'rating': _rating},
           });
         } catch (notifError) {
-          debugPrint('Error creando notificación: $notifError');
+          ErrorHandler.logError('LeaveRatingScreen._sendNotification', notifError);
         }
       }
 
@@ -209,14 +210,14 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Error enviando calificación: $e');
+      ErrorHandler.logError('LeaveRatingScreen._submitRating', e);
       if (mounted) {
         setState(() => _isSubmitting = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al enviar calificación', style: GoogleFonts.outfit()),
-            backgroundColor: Colors.red[700],
-          ),
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error al enviar calificación',
+          onRetry: _submitRating,
         );
       }
     }
@@ -238,7 +239,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
 
       // Actualizar perfil
       await _supabase
-          .from('profiles')
+          .from('perfiles')
           .update({
             'rating_promedio': average,
             'total_calificaciones': ratings.length,
@@ -246,7 +247,7 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
           })
           .eq('id', widget.userId);
     } catch (e) {
-      debugPrint('Error actualizando rating: $e');
+      ErrorHandler.logError('LeaveRatingScreen._updateUserRating', e);
     }
   }
 

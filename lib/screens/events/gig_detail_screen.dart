@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import '../../models/event.dart';
 import '../../services/notification_service.dart';
 import '../reports/report_content_screen.dart';
@@ -39,7 +40,7 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
       debugPrint('Loading gig with ID: ${widget.gigId}');
       
       final gigData = await _supabase
-          .from('gigs')
+          .from('eventos')
           .select()
           .eq('id', widget.gigId)
           .maybeSingle();
@@ -52,15 +53,15 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
 
       // Load organizer separately
       final organizer = await _supabase
-          .from('profiles')
+          .from('perfiles')
           .select()
           .eq('id', gigData['organizador_id'] ?? '')
           .maybeSingle();
 
       final lineupData = await _supabase
-          .from('gig_lineup')
-          .select('*, profiles(id, nombre_artistico, foto_perfil)')
-          .eq('gig_id', widget.gigId);
+          .from('participantes_evento')
+          .select('*, perfiles(id, nombre_artistico, foto_perfil)')
+          .eq('event_id', widget.gigId);
 
       // Obtener lista de usuarios bloqueados
       List<String> blockedIds = [];
@@ -77,20 +78,28 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
       if (mounted) {
         // Filtrar usuarios bloqueados del lineup
         final filteredLineup = (lineupData as List)
-            .where((l) => !blockedIds.contains(l['perfil_id']))
+            .where((l) => !blockedIds.contains(l['user_id']))
             .toList();
 
         setState(() {
           _gig = Evento.fromJson(gigData);
           _organizer = organizer;
           _lineup = filteredLineup;
-          _alreadyInLineup = filteredLineup.any((l) => l['perfil_id'] == myId);
+          _alreadyInLineup = filteredLineup.any((l) => l['user_id'] == myId);
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint('Error loading gig details: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('GigDetailScreen._loadGigDetails', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error al cargar detalles',
+          onRetry: _loadGigDetails,
+        );
+      }
     }
   }
 
@@ -104,29 +113,29 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
     setState(() => _isPostulating = true);
     try {
       // Insertar postulación
-      await _supabase.from('gig_lineup').insert({
-        'gig_id': widget.gigId,
-        'perfil_id': myId,
-        'rol_en_gig': 'Interesado',
-        'asistencia_confirmada': false,
+      await _supabase.from('participantes_evento').insert({
+        'event_id': widget.gigId,
+        'user_id': myId,
+        'role': 'Interesado',
+        'confirmed': false,
       });
 
       // Crear notificación de postulación a evento
       if (_gig?.organizadorId != null) {
         try {
           final myProfile = await _supabase
-              .from('profiles')
+              .from('perfiles')
               .select('nombre_artistico')
               .eq('id', myId)
               .single();
 
-          await _supabase.from('notifications').insert({
+          await _supabase.from('notificaciones').insert({
             'user_id': _gig!.organizadorId,
             'tipo': 'gig_postulation',
             'titulo': 'Nueva postulación',
             'mensaje': '${myProfile['nombre_artistico']} mostró interés en tu evento "${_gig!.titulo}"',
             'leido': false,
-            'data': {'sender_id': myId, 'gig_id': widget.gigId},
+            'data': {'sender_id': myId, 'event_id': widget.gigId},
           });
         } catch (notifError) {
           debugPrint('Error creando notificación: $notifError');
@@ -141,9 +150,13 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
         _loadGigDetails();
       }
     } catch (e) {
+      ErrorHandler.logError('GigDetailScreen._postulate', e);
       if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(content: Text('Error al enviar interés'), backgroundColor: AppConstants.errorColor),
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error al enviar interés',
+          onRetry: _postulate,
         );
       }
     } finally {

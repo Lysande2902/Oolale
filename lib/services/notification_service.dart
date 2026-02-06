@@ -103,8 +103,8 @@ class NotificationService {
         
         final platform = Platform.isAndroid ? 'android' : 'ios';
         
-        // Guardar token en la tabla device_tokens
-        await _supabase.from('device_tokens').upsert({
+        // Guardar token en la tabla tokens_dispositivo
+        await _supabase.from('tokens_dispositivo').upsert({
           'user_id': userId,
           'token': token,
           'platform': platform,
@@ -126,7 +126,7 @@ class NotificationService {
         if (userId != null) {
           final platform = Platform.isAndroid ? 'android' : 'ios';
           
-          await _supabase.from('device_tokens').upsert({
+          await _supabase.from('tokens_dispositivo').upsert({
             'user_id': userId,
             'token': newToken,
             'platform': platform,
@@ -268,7 +268,7 @@ class NotificationService {
 
       // Intentar con 'read' primero, si falla intentar con 'leido'
       final data = await _supabase
-          .from('notifications')
+          .from('notificaciones')
           .select('id')
           .eq('user_id', userId)
           .eq('leido', false);
@@ -283,7 +283,7 @@ class NotificationService {
   static Future<void> markAsRead(String notificationId) async {
     try {
       await _supabase
-          .from('notifications')
+          .from('notificaciones')
           .update({'leido': true, 'read_at': DateTime.now().toIso8601String()})
           .eq('id', notificationId);
       
@@ -300,7 +300,7 @@ class NotificationService {
       if (userId == null) return;
 
       await _supabase
-          .from('notifications')
+          .from('notificaciones')
           .update({'leido': true, 'read_at': DateTime.now().toIso8601String()})
           .eq('user_id', userId)
           .eq('leido', false);
@@ -319,7 +319,7 @@ class NotificationService {
 
       if (token != null && userId != null) {
         await _supabase
-            .from('device_tokens')
+            .from('tokens_dispositivo')
             .delete()
             .eq('user_id', userId)
             .eq('token', token);

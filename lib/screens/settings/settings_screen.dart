@@ -8,6 +8,9 @@ import '../../config/theme_colors.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/theme_provider.dart';
 import 'blocked_users_screen.dart';
+import '../../utils/error_handler.dart';
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -19,70 +22,72 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   final _supabase = Supabase.instance.client;
   
-  bool _openToWork = false;
   bool _isLoading = true;
+  bool _pushEnabled = true;
+  bool _dataSaver = false;
 
   @override
   void initState() {
     super.initState();
-    _loadSettings();
+    _loadAllSettings();
   }
 
-  Future<void> _loadSettings() async {
+  Future<void> _loadAllSettings() async {
+    setState(() => _isLoading = true);
     final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) return;
-
+    
     try {
-      final data = await _supabase
-          .from('profiles')
-          .select('open_to_work')
-          .eq('id', userId)
-          .single();
+      // 1. Cargar Notificaciones desde Supabase
+      if (userId != null) {
+        final pushData = await _supabase
+            .from('configuracion_notificaciones')
+            .select('push_enabled')
+            .eq('user_id', userId)
+            .maybeSingle();
+        
+        if (pushData != null) {
+          _pushEnabled = pushData['push_enabled'] ?? true;
+        }
+      }
+
+      // 2. Cargar Ahorro de Datos desde SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      _dataSaver = prefs.getBool('data_saver_enabled') ?? false;
 
       if (mounted) {
-        setState(() {
-          _openToWork = data['open_to_work'] ?? false;
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint('Error loading settings: $e');
+      ErrorHandler.logError('SettingsScreen._loadAllSettings', e);
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _updateOpenToWork(bool value) async {
+  Future<void> _togglePush(bool value) async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return;
 
-    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _pushEnabled = value);
 
     try {
       await _supabase
-          .from('profiles')
-          .update({'open_to_work': value})
-          .eq('id', userId);
-
-      setState(() => _openToWork = value);
-      
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text(value ? 'Ahora estás disponible para trabajos' : 'Ya no apareces como disponible'),
-            backgroundColor: AppConstants.primaryColor,
-          ),
-        );
-      }
+          .from('configuracion_notificaciones')
+          .update({'push_enabled': value})
+          .eq('user_id', userId);
     } catch (e) {
-      debugPrint('Error updating setting: $e');
-      if (mounted) {
-        messenger.showSnackBar(
-          const SnackBar(
-            content: Text('Error al actualizar configuración'),
-            backgroundColor: AppConstants.errorColor,
-          ),
-        );
-      }
+      ErrorHandler.logError('SettingsScreen._togglePush', e);
+      // Revertir si hay error
+      setState(() => _pushEnabled = !value);
+    }
+  }
+
+  Future<void> _toggleDataSaver(bool value) async {
+    setState(() => _dataSaver = value);
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('data_saver_enabled', value);
+    } catch (e) {
+      ErrorHandler.logError('SettingsScreen._toggleDataSaver', e);
     }
   }
 
@@ -91,16 +96,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppConstants.cardColor,
-        title: Text('Cerrar Sesión', style: TextStyle(color: ThemeColors.primaryText(context))),
-        content: Text('¿Estás seguro que quieres salir?', style: TextStyle(color: ThemeColors.secondaryText(context))),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Cerrar Sesión', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        content: Text('¿Estás seguro que quieres salir de tu cuenta?', style: GoogleFonts.outfit()),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar', style: TextStyle(color: ThemeColors.hintText(context))),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: const Text('Salir', style: TextStyle(color: AppConstants.errorColor)),
+            child: Text('Salir', style: GoogleFonts.outfit(color: AppConstants.errorColor, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -120,174 +126,81 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text('CONFIGURACIÓN', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        centerTitle: true,
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
           : ListView(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
               children: [
-                _buildSection('PERFIL'),
+                _buildSection('CUENTA Y PRIVACIDAD'),
                 _buildSettingTile(
-                  'Editar Perfil',
-                  'Actualiza tu información',
-                  Icons.edit_rounded,
-                  onTap: () => context.push('/edit-profile'),
+                  'Ajustes de Cuenta',
+                  'Email, contraseña y estado de perfil',
+                  Icons.manage_accounts_rounded,
+                  onTap: () => context.push('/settings/account-settings'),
                 ),
                 _buildSettingTile(
-                  'Billetera',
-                  'Gestiona tus pagos y saldo',
-                  Icons.account_balance_wallet_rounded,
-                  onTap: () => context.push('/settings/wallet'),
-                ),
-                
-                const SizedBox(height: 30),
-                _buildSection('DISPONIBILIDAD'),
-                _buildSwitchTile(
-                  'Open to Work',
-                  'Aparece en búsquedas de contratación',
-                  Icons.work_outline_rounded,
-                  _openToWork,
-                  (val) => _updateOpenToWork(val),
+                  'Usuarios Bloqueados',
+                  'Gestiona quién no puede contactarte',
+                  Icons.block_rounded,
+                  color: Colors.redAccent,
+                  onTap: () => context.push('/blocked-users'),
                 ),
 
-                const SizedBox(height: 30),
-                _buildSection('APARIENCIA'),
+                const SizedBox(height: 32),
+                _buildSection('PERSONALIZACIÓN'),
                 _buildSwitchTile(
                   'Modo Oscuro',
-                  'Alterna entre tema claro y oscuro',
+                  'Tema visual de la aplicación',
                   Icons.dark_mode_rounded,
                   Provider.of<ThemeProvider>(context).themeMode == ThemeMode.dark,
                   (val) => Provider.of<ThemeProvider>(context, listen: false).toggleTheme(val),
                 ),
-
-                const SizedBox(height: 30),
-                _buildSection('PRIVACIDAD Y SEGURIDAD'),
                 _buildSettingTile(
-                  'Configuración de Notificaciones',
-                  'Gestiona tus notificaciones',
-                  Icons.notifications_rounded,
+                  'Tamaño de fuente',
+                  'Mejora la legibilidad del texto',
+                  Icons.text_fields_rounded,
+                  onTap: () => context.push('/settings/font-size'),
+                ),
+
+                const SizedBox(height: 32),
+                _buildSection('NOTIFICACIONES'),
+                _buildSwitchTile(
+                  'Notificaciones Push',
+                  'Alertas de mensajes y eventos',
+                  Icons.notifications_active_rounded,
+                  _pushEnabled,
+                  _togglePush,
+                ),
+                _buildSettingTile(
+                  'Ajustes Detallados',
+                  'Configura cada tipo de alerta',
+                  Icons.tune_rounded,
                   onTap: () => context.push('/settings/notifications'),
                 ),
-                _buildSettingTile(
-                  'Configuración de Privacidad',
-                  'Controla quién ve tu información',
-                  Icons.privacy_tip_rounded,
-                  onTap: () => context.push('/settings/privacy-settings'),
-                ),
-                _buildSettingTile(
-                  'Cambiar Contraseña',
-                  'Actualiza tu contraseña',
-                  Icons.lock_rounded,
-                  onTap: () => context.push('/settings/change-password'),
-                ),
 
-                const SizedBox(height: 30),
-                _buildSection('CUENTA'),
-                _buildSettingTile(
-                  'Rankings',
-                  'Ver los mejores artistas',
-                  Icons.emoji_events_rounded,
-                  color: Colors.amber,
-                  onTap: () => context.push('/rankings'),
+                const SizedBox(height: 32),
+                _buildSection('DATOS Y RENDIMIENTO'),
+                _buildSwitchTile(
+                  'Ahorro de Datos',
+                  'Optimiza el consumo de red',
+                  Icons.data_saver_off_rounded,
+                  _dataSaver,
+                  _toggleDataSaver,
                 ),
                 _buildSettingTile(
-                  'Usuarios Bloqueados',
-                  'Gestiona usuarios bloqueados',
-                  Icons.block_rounded,
-                  color: Colors.red,
-                  onTap: () => context.push('/blocked-users'),
-                ),
-                _buildSettingTile(
-                  'Premium',
-                  'Mejora tu experiencia',
-                  Icons.star_rounded,
-                  color: AppConstants.accentColor,
-                  onTap: () => context.push('/premium'),
-                ),
-                _buildSettingTile(
-                  'Eliminar Cuenta',
-                  'Eliminar permanentemente tu cuenta',
-                  Icons.delete_forever_rounded,
-                  color: AppConstants.errorColor,
-                  onTap: () => context.push('/settings/delete-account'),
-                ),
-
-                const SizedBox(height: 30),
-                _buildSection('AYUDA Y LEGAL'),
-                _buildSettingTile(
-                  'Centro de Ayuda',
-                  'Preguntas frecuentes y soporte',
-                  Icons.help_rounded,
-                  onTap: () => context.push('/settings/help'),
-                ),
-                _buildSettingTile(
-                  'Términos y Condiciones',
-                  'Lee nuestros términos de servicio',
-                  Icons.description_rounded,
-                  onTap: () => context.push('/settings/terms'),
-                ),
-                _buildSettingTile(
-                  'Política de Privacidad',
-                  'Cómo protegemos tu información',
-                  Icons.privacy_tip_rounded,
-                  onTap: () => context.push('/settings/privacy'),
-                ),
-
-                const SizedBox(height: 30),
-                _buildSection('DATOS Y ALMACENAMIENTO'),
-                _buildSettingTile(
-                  'Uso de Datos',
-                  'Ver estadísticas de uso',
-                  Icons.data_usage_rounded,
-                  onTap: () => context.push('/settings/data-usage'),
-                ),
-                _buildSettingTile(
-                  'Limpiar Caché',
-                  'Libera espacio en tu dispositivo',
+                  'Almacenamiento y Caché',
+                  'Gestiona archivos temporales',
                   Icons.cleaning_services_rounded,
                   onTap: () => context.push('/settings/cache'),
                 ),
 
-                const SizedBox(height: 30),
-                _buildSection('SONIDO Y NOTIFICACIONES'),
-                _buildSettingTile(
-                  'Configuración de Sonidos',
-                  'Personaliza los sonidos de la app',
-                  Icons.volume_up_rounded,
-                  onTap: () => context.push('/settings/sounds'),
-                ),
-
-                const SizedBox(height: 30),
-                _buildSection('CUENTA AVANZADO'),
-                _buildSettingTile(
-                  'Cambiar Email',
-                  'Actualiza tu dirección de email',
-                  Icons.alternate_email_rounded,
-                  onTap: () => context.push('/settings/change-email'),
-                ),
-
-                const SizedBox(height: 30),
-                _buildSection('IDIOMA'),
-                _buildSettingTile(
-                  'Selección de Idioma',
-                  'Cambia el idioma de la app',
-                  Icons.language_rounded,
-                  onTap: () => context.push('/settings/language'),
-                ),
-
-                const SizedBox(height: 30),
-                _buildSection('ACCESIBILIDAD'),
-                _buildSettingTile(
-                  'Accesibilidad',
-                  'Tamaño de fuente y alto contraste',
-                  Icons.accessibility_new_rounded,
-                  onTap: () => context.push('/settings/accessibility'),
-                ),
-
-                const SizedBox(height: 30),
+                const SizedBox(height: 48),
                 _buildDangerButton(),
-                const SizedBox(height: 20),
+                const SizedBox(height: 32),
                 _buildVersionInfo(),
+                const SizedBox(height: 40),
               ],
             ),
     );
@@ -295,12 +208,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildSection(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12, left: 4),
+      padding: const EdgeInsets.only(bottom: 16, left: 4),
       child: Text(
         title,
         style: GoogleFonts.outfit(
           color: AppConstants.primaryColor,
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w900,
           letterSpacing: 2,
         ),
@@ -314,10 +227,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ThemeColors.divider(context)),
+        border: Border.all(color: ThemeColors.divider(context).withOpacity(0.05)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.02),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: ListTile(
         onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         leading: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -326,9 +247,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           child: Icon(icon, color: color ?? AppConstants.primaryColor, size: 22),
         ),
-        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: ThemeColors.hintText(context), fontSize: 12)),
-        trailing: Icon(Icons.chevron_right_rounded, color: ThemeColors.divider(context)),
+        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13)),
+        subtitle: Text(subtitle, style: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 11)),
+        trailing: Icon(Icons.chevron_right_rounded, color: ThemeColors.hintText(context).withOpacity(0.5), size: 20),
       ),
     );
   }
@@ -339,9 +260,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ThemeColors.divider(context)),
+        border: Border.all(color: ThemeColors.divider(context).withOpacity(0.05)),
       ),
       child: SwitchListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         secondary: Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -350,28 +272,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           child: Icon(icon, color: AppConstants.primaryColor, size: 22),
         ),
-        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, style: TextStyle(color: ThemeColors.hintText(context), fontSize: 12)),
+        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 13)),
+        subtitle: Text(subtitle, style: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 11)),
         value: value,
         onChanged: onChanged,
-        activeThumbColor: AppConstants.primaryColor,
+        activeColor: AppConstants.primaryColor,
       ),
     );
   }
 
   Widget _buildDangerButton() {
-    return SizedBox(
-      width: double.infinity,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
       child: OutlinedButton.icon(
         onPressed: _logout,
         style: OutlinedButton.styleFrom(
           foregroundColor: AppConstants.errorColor,
-          side: const BorderSide(color: AppConstants.errorColor),
+          side: BorderSide(color: AppConstants.errorColor.withOpacity(0.5)),
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
-        icon: const Icon(Icons.logout_rounded),
-        label: Text('Cerrar Sesión', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        icon: const Icon(Icons.logout_rounded, size: 20),
+        label: Text('CERRAR SESIÓN', style: GoogleFonts.outfit(fontWeight: FontWeight.w900, letterSpacing: 1, fontSize: 12)),
       ),
     );
   }
@@ -381,12 +303,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Column(
         children: [
           Text(
-            'Óolale Mobile',
-            style: GoogleFonts.outfit(color: ThemeColors.hintText(context).withOpacity(0.5), fontSize: 12),
+            'ÓOLALE CONNECT',
+            style: GoogleFonts.poppins(
+              color: AppConstants.primaryColor.withOpacity(0.5),
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
+            ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 6),
           Text(
-            'Versión 1.0.0 (Beta)',
+            'Versión 1.0.0 Stable',
             style: GoogleFonts.outfit(color: ThemeColors.hintText(context).withOpacity(0.3), fontSize: 10),
           ),
         ],

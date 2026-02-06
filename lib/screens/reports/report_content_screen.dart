@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 /// Pantalla universal para reportar cualquier tipo de contenido
 /// Soporta: usuarios, posts, eventos, mensajes
@@ -294,26 +295,13 @@ class _ReportContentScreenState extends State<ReportContentScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Error enviando reporte: $e');
+      ErrorHandler.logError('ReportContentScreen._submitReport', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_outline, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    'Error al enviar el reporte. Intenta nuevamente.',
-                    style: GoogleFonts.outfit(),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red[700],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error al enviar reporte',
+          onRetry: _submitReport,
         );
       }
     } finally {

@@ -24,6 +24,7 @@ class _EventCalendarScreenState extends State<EventCalendarScreen> {
   Map<DateTime, List<Evento>> _events = {};
   List<Evento> _selectedDayEvents = [];
   bool _isLoading = true;
+  String? _selectedFilter; // null = todos, 'concierto', 'ensayo', 'jam', 'otro'
 
   @override
   void initState() {
@@ -76,7 +77,83 @@ class _EventCalendarScreenState extends State<EventCalendarScreen> {
     }
     
     final dateKey = DateTime(_selectedDay!.year, _selectedDay!.month, _selectedDay!.day);
-    _selectedDayEvents = _events[dateKey] ?? [];
+    final dayEvents = _events[dateKey] ?? [];
+    
+    // Apply filter
+    if (_selectedFilter == null) {
+      _selectedDayEvents = dayEvents;
+    } else {
+      _selectedDayEvents = dayEvents.where((event) => event.tipo == _selectedFilter).toList();
+    }
+  }
+
+  void _applyFilter(String? filter) {
+    setState(() {
+      _selectedFilter = filter;
+      _updateSelectedDayEvents();
+    });
+  }
+
+  void _showFilterDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        title: Text(
+          'Filtrar por tipo',
+          style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _FilterOption(
+              label: 'Todos los eventos',
+              isSelected: _selectedFilter == null,
+              onTap: () {
+                _applyFilter(null);
+                Navigator.pop(context);
+              },
+            ),
+            _FilterOption(
+              label: 'Conciertos',
+              icon: Icons.music_note,
+              isSelected: _selectedFilter == 'concierto',
+              onTap: () {
+                _applyFilter('concierto');
+                Navigator.pop(context);
+              },
+            ),
+            _FilterOption(
+              label: 'Ensayos',
+              icon: Icons.piano,
+              isSelected: _selectedFilter == 'ensayo',
+              onTap: () {
+                _applyFilter('ensayo');
+                Navigator.pop(context);
+              },
+            ),
+            _FilterOption(
+              label: 'Jam Sessions',
+              icon: Icons.people,
+              isSelected: _selectedFilter == 'jam',
+              onTap: () {
+                _applyFilter('jam');
+                Navigator.pop(context);
+              },
+            ),
+            _FilterOption(
+              label: 'Otros',
+              icon: Icons.event,
+              isSelected: _selectedFilter == 'otro',
+              onTap: () {
+                _applyFilter('otro');
+                Navigator.pop(context);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   List<Evento> _getEventsForDay(DateTime day) {
@@ -99,6 +176,18 @@ class _EventCalendarScreenState extends State<EventCalendarScreen> {
           'Calendario de Eventos',
           style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(
+              Icons.filter_list,
+              color: _selectedFilter != null 
+                  ? AppConstants.primaryColor 
+                  : ThemeColors.icon(context),
+            ),
+            onPressed: _showFilterDialog,
+            tooltip: 'Filtrar eventos',
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
@@ -195,36 +284,87 @@ class _EventCalendarScreenState extends State<EventCalendarScreen> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            DateFormat('EEEE, d MMMM', 'es').format(_selectedDay!),
-            style: GoogleFonts.outfit(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: ThemeColors.primaryText(context),
-            ),
+          Row(
+            children: [
+              Text(
+                DateFormat('EEEE, d MMMM', 'es').format(_selectedDay!),
+                style: GoogleFonts.outfit(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: ThemeColors.primaryText(context),
+                ),
+              ),
+              const Spacer(),
+              if (_selectedDayEvents.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppConstants.primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '${_selectedDayEvents.length} evento${_selectedDayEvents.length != 1 ? 's' : ''}',
+                    style: GoogleFonts.outfit(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: AppConstants.primaryColor,
+                    ),
+                  ),
+                ),
+            ],
           ),
-          const Spacer(),
-          if (_selectedDayEvents.isNotEmpty)
+          if (_selectedFilter != null) ...[
+            const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: AppConstants.primaryColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
               ),
-              child: Text(
-                '${_selectedDayEvents.length} evento${_selectedDayEvents.length != 1 ? 's' : ''}',
-                style: GoogleFonts.outfit(
-                  fontSize: 13,
-                  fontWeight: FontWeight.bold,
-                  color: AppConstants.primaryColor,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.filter_list, size: 14, color: AppConstants.primaryColor),
+                  const SizedBox(width: 6),
+                  Text(
+                    _getFilterLabel(_selectedFilter!),
+                    style: GoogleFonts.outfit(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: ThemeColors.primaryText(context),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  GestureDetector(
+                    onTap: () => _applyFilter(null),
+                    child: Icon(Icons.close, size: 14, color: ThemeColors.icon(context)),
+                  ),
+                ],
               ),
             ),
+          ],
         ],
       ),
     );
+  }
+
+  String _getFilterLabel(String filter) {
+    switch (filter) {
+      case 'concierto':
+        return 'Conciertos';
+      case 'ensayo':
+        return 'Ensayos';
+      case 'jam':
+        return 'Jam Sessions';
+      case 'otro':
+        return 'Otros';
+      default:
+        return 'Todos';
+    }
   }
 
   Widget _buildEventList() {
@@ -401,3 +541,75 @@ class _EventCard extends StatelessWidget {
 
 
 
+
+class _FilterOption extends StatelessWidget {
+  final String label;
+  final IconData? icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FilterOption({
+    required this.label,
+    this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(
+        color: isSelected 
+            ? AppConstants.primaryColor.withOpacity(0.1) 
+            : Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSelected 
+              ? AppConstants.primaryColor 
+              : ThemeColors.divider(context),
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                if (icon != null) ...[
+                  Icon(
+                    icon,
+                    size: 20,
+                    color: isSelected 
+                        ? AppConstants.primaryColor 
+                        : ThemeColors.icon(context),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(
+                  child: Text(
+                    label,
+                    style: GoogleFonts.outfit(
+                      fontSize: 14,
+                      fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                      color: ThemeColors.primaryText(context),
+                    ),
+                  ),
+                ),
+                if (isSelected)
+                  Icon(
+                    Icons.check_circle,
+                    size: 20,
+                    color: AppConstants.primaryColor,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

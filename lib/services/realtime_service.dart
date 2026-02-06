@@ -3,14 +3,35 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for managing Supabase Realtime connections
-/// Handles message streaming, typing indicators, and read receipts
+/// Handles message streaming, typing indicators, read receipts, and auto-reconnection
 class RealtimeService {
   final SupabaseClient _supabase;
   RealtimeChannel? _channel;
   StreamController<Map<String, dynamic>>? _messageController;
   StreamController<TypingEvent>? _typingController;
+  StreamController<RealtimeConnectionState>? _connectionController;
+  
+  // Reconnection management
+  Timer? _reconnectTimer;
+  int _reconnectAttempts = 0;
+  static const int _maxReconnectAttempts = 5;
+  static const Duration _reconnectDelay = Duration(seconds: 3);
+  
+  // Connection state
+  bool _isConnected = false;
+  String? _currentUserId;
+  String? _currentOtherUserId;
+  Function(Map<String, dynamic>)? _currentOnMessage;
 
-  RealtimeService(this._supabase);
+  RealtimeService(this._supabase) {
+    _connectionController = StreamController<RealtimeConnectionState>.broadcast();
+  }
+
+  /// Get connection state stream
+  Stream<RealtimeConnectionState> get connectionState => _connectionController!.stream;
+
+  /// Check if currently connected
+  bool get isConnected => _isConnected;
 
   /// Subscribe to a conversation channel for real-time messages
   /// [userId] - Current user's ID
@@ -21,45 +42,117 @@ class RealtimeService {
     String otherUserId,
     Function(Map<String, dynamic>) onMessage,
   ) async {
+    // Store connection parameters for reconnection
+    _currentUserId = userId;
+    _currentOtherUserId = otherUserId;
+    _currentOnMessage = onMessage;
+    
+    await _connect();
+  }
+
+  /// Internal connection method
+  Future<void> _connect() async {
+    if (_currentUserId == null || _currentOtherUserId == null || _currentOnMessage == null) {
+      return;
+    }
+
     // Create unique channel name for this conversation
-    final channelName = _getChannelName(userId, otherUserId);
+    final channelName = _getChannelName(_currentUserId!, _currentOtherUserId!);
 
     // Unsubscribe from previous channel if exists
-    await unsubscribe();
+    await _unsubscribeInternal();
 
-    // Create message stream controller
-    _messageController = StreamController<Map<String, dynamic>>.broadcast();
-    _messageController!.stream.listen(onMessage);
+    // Update connection state
+    _updateConnectionState(RealtimeConnectionState.connecting);
 
-    // Subscribe to messages table changes
-    _channel = _supabase.channel(channelName)
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'intercom',
-          callback: (payload) {
-            final newMessage = payload.newRecord;
-            // Only process messages for this conversation
-            if (newMessage['remitente_id'] == userId || 
-                newMessage['destinatario_id'] == userId) {
-              _messageController?.add(newMessage);
+    // Create message stream controller if needed
+    _messageController ??= StreamController<Map<String, dynamic>>.broadcast();
+    _messageController!.stream.listen(_currentOnMessage!);
+
+    try {
+      // Subscribe to messages table changes
+      _channel = _supabase.channel(channelName)
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'conversaciones',
+            callback: (payload) {
+              final newMessage = payload.newRecord;
+              debugPrint('🔔 REALTIME: New message arrived: ${newMessage['contenido']}');
+              // Only process messages for this conversation
+              if (newMessage['remitente_id'] == _currentUserId || 
+                  newMessage['destinatario_id'] == _currentUserId) {
+                _messageController?.add(newMessage);
+              }
+            },
+          )
+          .subscribe((status, error) {
+            if (status == RealtimeSubscribeStatus.subscribed) {
+              debugPrint('✅ Subscribed to conversation: $channelName');
+              _isConnected = true;
+              _reconnectAttempts = 0;
+              _updateConnectionState(RealtimeConnectionState.connected);
+            } else if (status == RealtimeSubscribeStatus.closed) {
+              debugPrint('⚠️ Connection closed');
+              _isConnected = false;
+              _updateConnectionState(RealtimeConnectionState.disconnected);
+              _scheduleReconnect();
+            } else if (error != null) {
+              debugPrint('❌ Subscription error: $error');
+              _isConnected = false;
+              _updateConnectionState(RealtimeConnectionState.error);
+              _scheduleReconnect();
             }
-          },
-        )
-        .subscribe((status, error) {
-          if (status == RealtimeSubscribeStatus.subscribed) {
-            debugPrint('✅ Subscribed to conversation: $channelName');
-          } else if (error != null) {
-            debugPrint('❌ Subscription error: $error');
-          }
-        });
+          });
+    } catch (e) {
+      debugPrint('❌ Error connecting: $e');
+      _isConnected = false;
+      _updateConnectionState(RealtimeConnectionState.error);
+      _scheduleReconnect();
+    }
+  }
+
+  /// Schedule automatic reconnection
+  void _scheduleReconnect() {
+    // Cancel existing timer
+    _reconnectTimer?.cancel();
+    
+    // Check if we've exceeded max attempts
+    if (_reconnectAttempts >= _maxReconnectAttempts) {
+      debugPrint('❌ Max reconnection attempts reached');
+      _updateConnectionState(RealtimeConnectionState.failed);
+      return;
+    }
+    
+    _reconnectAttempts++;
+    final delay = _reconnectDelay * _reconnectAttempts;
+    
+    debugPrint('🔄 Scheduling reconnection attempt $_reconnectAttempts in ${delay.inSeconds}s');
+    
+    _reconnectTimer = Timer(delay, () {
+      debugPrint('🔄 Attempting reconnection...');
+      _connect();
+    });
+  }
+
+  /// Manually trigger reconnection
+  Future<void> reconnect() async {
+    _reconnectAttempts = 0;
+    await _connect();
+  }
+
+  /// Update connection state and notify listeners
+  void _updateConnectionState(RealtimeConnectionState state) {
+    if (_connectionController != null && !_connectionController!.isClosed) {
+      _connectionController?.add(state);
+    }
   }
 
   /// Broadcast typing indicator to the recipient
   /// [conversationId] - Unique conversation identifier
   /// [isTyping] - Whether user is currently typing
   Future<void> sendTypingIndicator(String conversationId, bool isTyping) async {
-    if (_channel == null) return;
+    if (_channel == null || !_isConnected) return;
 
     try {
       await _channel!.sendBroadcastMessage(
@@ -101,7 +194,7 @@ class RealtimeService {
   /// [messageId] - ID of the message to mark as read
   Future<void> markMessageAsRead(String messageId) async {
     try {
-      await _supabase.from('intercom').update({
+      await _supabase.from('conversaciones').update({
         'leido': true,
         'read_at': DateTime.now().toIso8601String(),
       }).eq('id', messageId);
@@ -116,7 +209,7 @@ class RealtimeService {
   Future<void> markAllMessagesAsRead(String userId, String otherUserId) async {
     try {
       await _supabase
-          .from('intercom')
+          .from('conversaciones')
           .update({
             'leido': true,
             'read_at': DateTime.now().toIso8601String(),
@@ -129,18 +222,34 @@ class RealtimeService {
     }
   }
 
-  /// Unsubscribe from current channel and clean up resources
-  Future<void> unsubscribe() async {
+  /// Internal unsubscribe without clearing connection parameters
+  Future<void> _unsubscribeInternal() async {
     if (_channel != null) {
       await _supabase.removeChannel(_channel!);
       _channel = null;
     }
+  }
+
+  /// Unsubscribe from current channel and clean up resources
+  Future<void> unsubscribe() async {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _reconnectAttempts = 0;
+    
+    await _unsubscribeInternal();
 
     await _messageController?.close();
     _messageController = null;
 
     await _typingController?.close();
     _typingController = null;
+    
+    _currentUserId = null;
+    _currentOtherUserId = null;
+    _currentOnMessage = null;
+    _isConnected = false;
+    
+    _updateConnectionState(RealtimeConnectionState.disconnected);
   }
 
   /// Generate unique channel name for conversation
@@ -151,8 +260,19 @@ class RealtimeService {
 
   /// Dispose of all resources
   void dispose() {
+    _reconnectTimer?.cancel();
     unsubscribe();
+    _connectionController?.close();
   }
+}
+
+/// Connection state enum
+enum RealtimeConnectionState {
+  disconnected,
+  connecting,
+  connected,
+  error,
+  failed,
 }
 
 /// Typing event data class

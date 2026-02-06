@@ -63,7 +63,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     try {
       final timeStr = "${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00";
       
-      await _supabase.from('gigs').insert({
+      await _supabase.from('eventos').insert({
         'organizador_id': myId,
         'titulo_bolo': _titleController.text.trim(),
         'resumen_setlist': _descController.text.trim(),
@@ -146,7 +146,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: TextFormField(
         controller: ctrl,
@@ -158,6 +166,8 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
           prefixIcon: Icon(icon, color: AppConstants.primaryColor, size: 20),
           border: InputBorder.none,
           contentPadding: const EdgeInsets.all(16),
+          filled: false,
+          fillColor: Colors.transparent,
         ),
         validator: (v) => v!.isEmpty ? 'Requerido' : null,
       ),
@@ -171,7 +181,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: ThemeColors.divider(context)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.03),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -196,7 +214,15 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.03),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(

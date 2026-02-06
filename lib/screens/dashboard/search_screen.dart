@@ -5,6 +5,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import '../profile/public_profile_screen.dart';
 
 class UserSearchScreen extends StatefulWidget {
@@ -24,16 +25,21 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   List<dynamic> _nearby = [];
   bool _isLoading = false;
   bool _showSearch = false;
-  bool _showFilters = false;
   
   // Filtros
-  String? _selectedRole;
   String? _selectedInstrument;
   String? _selectedLocation;
-  double? _minRating;
   bool _onlyOpenToWork = false;
   bool _onlyVerified = false;
   String _sortBy = 'recent'; // recent, rating, connections
+
+  // Nuevos filtros (Simplificados)
+  List<String> _selectedGenres = [];
+  
+  final List<String> _allGenres = [
+    'Rock', 'Pop', 'Jazz', 'Blues', 'Metal', 'Reggae',
+    'Salsa', 'Cumbia', 'Electrónica', 'Funk',
+  ];
 
   @override
   void initState() {
@@ -47,67 +53,93 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     try {
       final myId = _supabase.auth.currentUser?.id;
       
-      // Obtener lista de usuarios bloqueados
+      // Obtener lista de usuarios bloqueados (Mutual: mis bloqueados + quienes me bloquearon)
       List<String> blockedIds = [];
       if (myId != null) {
         final blockedUsers = await _supabase
             .from('usuarios_bloqueados')
-            .select('bloqueado_id')
-            .eq('usuario_id', myId)
+            .select('usuario_id, bloqueado_id')
+            .or('usuario_id.eq.$myId,bloqueado_id.eq.$myId')
             .eq('activo', true);
-        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+        
+        blockedIds = blockedUsers.map((b) => 
+          b['usuario_id'] == myId ? b['bloqueado_id'].toString() : b['usuario_id'].toString()
+        ).toList();
+        
+        debugPrint('SEARCH: Usuarios bloqueados (mutual): ${blockedIds.length}');
       }
       
-      // 1. Destacados (Premium o verificados con más actividad)
-      var featuredQuery = _supabase.from('profiles').select();
+      // 1. Destacados (Los 10 con mejor puntuación general)
+      var featuredQuery = _supabase.from('perfiles').select();
       if (myId != null) featuredQuery = featuredQuery.neq('id', myId);
+      if (blockedIds.isNotEmpty) featuredQuery = featuredQuery.filter('id', 'not.in', '(${blockedIds.join(',')})');
       
       final featuredData = await featuredQuery
-          .or('ranking_tipo.eq.premium,verificado.eq.true')
+          .not('rating_promedio', 'is', null) // Solo perfiles con rating
           .order('rating_promedio', ascending: false)
-          .limit(10);
+          .limit(20);
       
       // 2. Verificados
-      var verifiedQuery = _supabase.from('profiles').select();
+      var verifiedQuery = _supabase.from('perfiles').select();
       if (myId != null) verifiedQuery = verifiedQuery.neq('id', myId);
+      if (blockedIds.isNotEmpty) verifiedQuery = verifiedQuery.filter('id', 'not.in', '(${blockedIds.join(',')})');
       
       final verifiedData = await verifiedQuery
           .eq('verificado', true)
           .order('created_at', ascending: false)
-          .limit(10);
+          .limit(20);
       
-      // 3. Variados (mezcla de nuevos y antiguos)
-      var mixedQuery = _supabase.from('profiles').select();
+      // 3. Variados (mezcla de nuevos y antiguos) - EXCLUYENDO VERIFICADOS
+      var mixedQuery = _supabase.from('perfiles').select();
       if (myId != null) mixedQuery = mixedQuery.neq('id', myId);
+      if (blockedIds.isNotEmpty) mixedQuery = mixedQuery.filter('id', 'not.in', '(${blockedIds.join(',')})');
       
       final mixedData = await mixedQuery
+          .eq('verificado', false) // Solo NO verificados para evitar duplicados
           .order('created_at', ascending: false)
-          .limit(20);
+          .limit(30);
       
       // Mezclar para variedad
       final List<dynamic> varied = List.from(mixedData)..shuffle();
       
       if (mounted) {
         setState(() {
-          // Filtrar usuarios bloqueados
-          _featured = featuredData.where((u) => !blockedIds.contains(u['id'])).toList();
-          _verified = verifiedData.where((u) => !blockedIds.contains(u['id'])).toList();
-          _artists = varied.where((u) => !blockedIds.contains(u['id'])).take(10).toList();
+          // Filtrar usuarios bloqueados y a uno mismo
+          _featured = featuredData.where((u) => u['id'] != myId && !blockedIds.contains(u['id'])).toList();
+          _verified = verifiedData.where((u) => u['id'] != myId && !blockedIds.contains(u['id'])).toList();
+          // Descubre: solo músicos NO verificados
+          _artists = varied.where((u) => u['id'] != myId && !blockedIds.contains(u['id'])).take(20).toList();
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint('Error: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('UserSearchScreen._loadInitialData', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando artistas',
+          onRetry: _loadInitialData,
+        );
+      }
     }
   }
 
   Future<void> _performSearch(String query) async {
-    if (query.isEmpty) {
+    final hasActiveFilters = query.isNotEmpty || 
+                            _selectedInstrument != null || 
+                            _selectedLocation != null || 
+                            _selectedGenres.isNotEmpty || 
+                            _onlyVerified || 
+                            _onlyOpenToWork;
+
+    if (!hasActiveFilters) {
       setState(() {
         _artists = List.from(_featured)..shuffle();
         _artists = _artists.take(10).toList();
         _showSearch = false;
+        _isLoading = false;
       });
       return;
     }
@@ -120,21 +152,25 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     try {
       final myId = _supabase.auth.currentUser?.id;
       
-      // Obtener lista de usuarios bloqueados
+      // Obtener lista de usuarios bloqueados (Mutual: mis bloqueados + quienes me bloquearon)
       List<String> blockedIds = [];
       if (myId != null) {
         final blockedUsers = await _supabase
             .from('usuarios_bloqueados')
-            .select('bloqueado_id')
-            .eq('usuario_id', myId)
+            .select('usuario_id, bloqueado_id')
+            .or('usuario_id.eq.$myId,bloqueado_id.eq.$myId')
             .eq('activo', true);
-        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+        
+        blockedIds = blockedUsers.map((b) => 
+          b['usuario_id'] == myId ? b['bloqueado_id'].toString() : b['usuario_id'].toString()
+        ).toList();
       }
       
-      // Buscar en múltiples campos
-      var queryBuilder = _supabase.from('profiles').select('''
+      // Buscar en múltiples campos o filtrar
+      var queryBuilder = _supabase.from('perfiles').select('''
         *,
-        perfil_gear(gear_catalog(nombre, categoria))
+        perfil_gear(gear_catalog(nombre, familia))
+        ${_selectedGenres.isNotEmpty ? ', generos_perfil!inner(genre)' : ''}
       ''');
       
       // Búsqueda amplia
@@ -147,25 +183,27 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       if (myId != null) {
         queryBuilder = queryBuilder.neq('id', myId);
       }
+      if (blockedIds.isNotEmpty) {
+        queryBuilder = queryBuilder.filter('id', 'not.in', '(${blockedIds.join(',')})');
+      }
       
       // Aplicar filtros
-      if (_selectedRole != null) {
-        queryBuilder = queryBuilder.eq('rol_principal', _selectedRole!);
-      }
       if (_selectedInstrument != null && _selectedInstrument!.isNotEmpty) {
         queryBuilder = queryBuilder.ilike('instrumento_principal', '%$_selectedInstrument%');
       }
       if (_selectedLocation != null && _selectedLocation!.isNotEmpty) {
         queryBuilder = queryBuilder.ilike('ubicacion_base', '%$_selectedLocation%');
       }
-      if (_minRating != null) {
-        queryBuilder = queryBuilder.gte('rating_promedio', _minRating!);
-      }
       if (_onlyOpenToWork) {
         queryBuilder = queryBuilder.eq('open_to_work', true);
       }
       if (_onlyVerified) {
         queryBuilder = queryBuilder.eq('verificado', true);
+      }
+      
+      // Filtros nuevos
+      if (_selectedGenres.isNotEmpty) {
+        queryBuilder = queryBuilder.filter('generos_perfil.genre', 'in', _selectedGenres);
       }
 
       // Aplicar límite y ordenar resultados
@@ -183,28 +221,260 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       
       if (mounted) {
         setState(() {
-          // Filtrar usuarios bloqueados
-          _artists = data.where((u) => !blockedIds.contains(u['id'])).toList();
+          // Filtrar usuarios bloqueados y a uno mismo
+          _artists = data.where((u) => u['id'] != myId && !blockedIds.contains(u['id'])).toList();
           _isLoading = false;
         });
       }
     } catch (e) {
-      debugPrint('Error en búsqueda: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('UserSearchScreen._performSearch', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error en la búsqueda');
+      }
     }
   }
 
   void _clearFilters() {
     setState(() {
-      _selectedRole = null;
       _selectedInstrument = null;
       _selectedLocation = null;
-      _minRating = null;
       _onlyOpenToWork = false;
       _onlyVerified = false;
       _sortBy = 'recent';
+      _selectedGenres = [];
     });
     _performSearch(_searchController.text);
+  }
+
+  void _showFilterOptions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.8,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) => SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: ThemeColors.divider(context),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Filtros de Artistas',
+                      style: GoogleFonts.outfit(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: ThemeColors.primaryText(context),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        _clearFilters();
+                        Navigator.pop(context);
+                      },
+                      child: Text('Limpiar', style: GoogleFonts.outfit(color: AppConstants.primaryColor)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Ordenar por
+                Text('Priorizar resultados por:', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 17, letterSpacing: -0.5)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildModalChip(
+                      label: 'Nuevos Miembros', 
+                      isSelected: _sortBy == 'recent',
+                      onTap: () => setModalState(() => _sortBy = 'recent'),
+                    ),
+                    _buildModalChip(
+                      label: 'Mejor Valorados', 
+                      isSelected: _sortBy == 'rating',
+                      onTap: () => setModalState(() => _sortBy = 'rating'),
+                    ),
+                    _buildModalChip(
+                      label: 'Más Populares', 
+                      isSelected: _sortBy == 'connections',
+                      onTap: () => setModalState(() => _sortBy = 'connections'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Inputs
+                _buildModalInput(
+                  label: 'Instrumento',
+                  hint: 'Bajo, Batería, Piano...',
+                  initialValue: _selectedInstrument,
+                  onChanged: (v) => _selectedInstrument = v.isEmpty ? null : v,
+                ),
+                const SizedBox(height: 16),
+                _buildModalInput(
+                  label: 'Ubicación',
+                  hint: 'Ciudad o País',
+                  initialValue: _selectedLocation,
+                  onChanged: (v) => _selectedLocation = v.isEmpty ? null : v,
+                ),
+                const SizedBox(height: 24),
+
+                // Géneros
+                Text('¿Qué música buscas?', style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 17)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _allGenres.map((genre) => _buildModalChip(
+                    label: genre,
+                    isSelected: _selectedGenres.contains(genre),
+                    onTap: () => setModalState(() {
+                      if (_selectedGenres.contains(genre)) {
+                        _selectedGenres.remove(genre);
+                      } else {
+                        _selectedGenres.add(genre);
+                      }
+                    }),
+                  )).toList(),
+                ),
+                const SizedBox(height: 24),
+
+                // Switches rápidos
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Solo Verificados', style: GoogleFonts.outfit(fontSize: 15)),
+                    Switch(
+                      value: _onlyVerified,
+                      onChanged: (v) => setModalState(() => _onlyVerified = v),
+                      activeColor: AppConstants.primaryColor,
+                    ),
+                  ],
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Disponible (Open to work)', style: GoogleFonts.outfit(fontSize: 15)),
+                    Switch(
+                      value: _onlyOpenToWork,
+                      onChanged: (v) => setModalState(() => _onlyOpenToWork = v),
+                      activeColor: AppConstants.primaryColor,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
+
+                // Botón Aplicar
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _performSearch(_searchController.text);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppConstants.primaryColor,
+                      foregroundColor: Colors.black,
+                      elevation: 4,
+                      shadowColor: AppConstants.primaryColor.withOpacity(0.4),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+                    ),
+                    child: Text(
+                      'Ver Resultados',
+                      style: GoogleFonts.outfit(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModalChip({required String label, required bool isSelected, required VoidCallback onTap}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppConstants.primaryColor : (isDark ? AppConstants.bgDarkTertiary : Colors.white),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? AppConstants.primaryColor : ThemeColors.divider(context),
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: isSelected 
+                ? AppConstants.primaryColor.withOpacity(0.3) 
+                : Colors.black.withOpacity(isDark ? 0.3 : 0.03),
+              blurRadius: isSelected ? 10 : 5,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.outfit(
+            fontSize: 14,
+            fontWeight: isSelected ? FontWeight.w800 : FontWeight.w500,
+            color: isSelected ? Colors.black : ThemeColors.secondaryText(context),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModalInput({required String label, required String hint, String? initialValue, required Function(String) onChanged}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: GoogleFonts.outfit(fontWeight: FontWeight.w800, fontSize: 17, letterSpacing: -0.5)),
+        const SizedBox(height: 12),
+        TextFormField(
+          initialValue: initialValue,
+          onChanged: onChanged,
+          style: GoogleFonts.outfit(fontSize: 14),
+          decoration: InputDecoration(
+            hintText: hint,
+            filled: false,
+            fillColor: Colors.transparent,
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -216,7 +486,6 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
           children: [
             _buildHeader(),
             _buildSearchBar(),
-            if (_showFilters) _buildFilters(),
             Expanded(
               child: _isLoading && _artists.isEmpty
                 ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
@@ -232,35 +501,19 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Explorar',
-                  style: GoogleFonts.outfit(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: ThemeColors.primaryText(context),
-                  ),
-                ),
-                Text(
-                  _showSearch ? '${_artists.length} resultados' : 'Descubre artistas',
-                  style: GoogleFonts.outfit(
-                    color: ThemeColors.secondaryText(context),
-                    fontSize: 13,
-                  ),
-                ),
-              ],
+          Text(
+            'Explorar',
+            style: GoogleFonts.outfit(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: ThemeColors.primaryText(context),
             ),
           ),
           IconButton(
-            icon: Icon(
-              _showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
-              color: _showFilters ? AppConstants.primaryColor : ThemeColors.iconSecondary(context),
-            ),
-            onPressed: () => setState(() => _showFilters = !_showFilters),
+            icon: Icon(Icons.tune, color: AppConstants.primaryColor),
+            onPressed: _showFilterOptions,
           ),
         ],
       ),
@@ -268,248 +521,45 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   }
 
   Widget _buildSearchBar() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       child: Container(
-        height: 48,
         decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppConstants.primaryColor.withOpacity(0.1)),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
         ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Row(
-            children: [
-              const SizedBox(width: 14),
-              Icon(Icons.search, color: AppConstants.primaryColor, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _performSearch,
-                  style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 15),
-                  decoration: InputDecoration(
-                    hintText: 'Nombre, instrumento, ubicación...',
-                    hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 15),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
-              if (_searchController.text.isNotEmpty)
-                IconButton(
-                  icon: Icon(Icons.clear, color: ThemeColors.iconSecondary(context), size: 18),
+        child: TextField(
+          controller: _searchController,
+          onChanged: _performSearch,
+          style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 15),
+          decoration: InputDecoration(
+            prefixIcon: Icon(Icons.search, color: AppConstants.primaryColor),
+            hintText: 'Nombre, instrumento, ubicación...',
+            filled: false,
+            fillColor: Colors.transparent,
+            suffixIcon: _searchController.text.isNotEmpty 
+              ? IconButton(
+                  icon: Icon(Icons.clear, color: ThemeColors.iconSecondary(context), size: 20),
                   onPressed: () {
                     _searchController.clear();
                     _performSearch('');
                   },
-                ),
-            ],
+                ) 
+              : null,
           ),
         ),
       ),
     );
   }
 
-  Widget _buildFilters() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Filtros',
-                style: GoogleFonts.outfit(
-                  color: ThemeColors.primaryText(context),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              TextButton(
-                onPressed: _clearFilters,
-                child: Text(
-                  'Limpiar',
-                  style: GoogleFonts.outfit(
-                    color: AppConstants.primaryColor,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          
-          // Rol
-          Text('Tipo', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildFilterChip('Músico', _selectedRole == 'musico', () {
-                setState(() => _selectedRole = _selectedRole == 'musico' ? null : 'musico');
-                _performSearch(_searchController.text);
-              }),
-              _buildFilterChip('Banda', _selectedRole == 'banda', () {
-                setState(() => _selectedRole = _selectedRole == 'banda' ? null : 'banda');
-                _performSearch(_searchController.text);
-              }),
-              _buildFilterChip('Venue', _selectedRole == 'venue', () {
-                setState(() => _selectedRole = _selectedRole == 'venue' ? null : 'venue');
-                _performSearch(_searchController.text);
-              }),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Instrumento
-          Text('Instrumento', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
-          const SizedBox(height: 8),
-          Container(
-            height: 40,
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.withOpacity(0.3)),
-            ),
-            child: TextField(
-              onChanged: (value) {
-                setState(() => _selectedInstrument = value.isEmpty ? null : value);
-                _performSearch(_searchController.text);
-              },
-              style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Ej: Guitarra, Batería...',
-                hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Ubicación
-          Text('Ubicación', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
-          const SizedBox(height: 8),
-          Container(
-            height: 40,
-            decoration: BoxDecoration(
-              color: Theme.of(context).scaffoldBackgroundColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.withOpacity(0.3)),
-            ),
-            child: TextField(
-              onChanged: (value) {
-                setState(() => _selectedLocation = value.isEmpty ? null : value);
-                _performSearch(_searchController.text);
-              },
-              style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 13),
-              decoration: InputDecoration(
-                hintText: 'Ej: Ciudad, País...',
-                hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
-                border: InputBorder.none,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          
-          // Calificación mínima
-          Text('Calificación mínima', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              _buildFilterChip('4+ ⭐', _minRating == 4.0, () {
-                setState(() => _minRating = _minRating == 4.0 ? null : 4.0);
-                _performSearch(_searchController.text);
-              }),
-              _buildFilterChip('4.5+ ⭐', _minRating == 4.5, () {
-                setState(() => _minRating = _minRating == 4.5 ? null : 4.5);
-                _performSearch(_searchController.text);
-              }),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Otros filtros
-          Text('Otros', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildFilterChip('Disponible', _onlyOpenToWork, () {
-                setState(() => _onlyOpenToWork = !_onlyOpenToWork);
-                _performSearch(_searchController.text);
-              }),
-              _buildFilterChip('Verificado', _onlyVerified, () {
-                setState(() => _onlyVerified = !_onlyVerified);
-                _performSearch(_searchController.text);
-              }),
-            ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Ordenar por
-          Text('Ordenar por', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12)),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children: [
-              _buildFilterChip('Recientes', _sortBy == 'recent', () {
-                setState(() => _sortBy = 'recent');
-                _performSearch(_searchController.text);
-              }),
-              _buildFilterChip('Mejor calificados', _sortBy == 'rating', () {
-                setState(() => _sortBy = 'rating');
-                _performSearch(_searchController.text);
-              }),
-              _buildFilterChip('Más conexiones', _sortBy == 'connections', () {
-                setState(() => _sortBy = 'connections');
-                _performSearch(_searchController.text);
-              }),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
 
-  Widget _buildFilterChip(String label, bool isSelected, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppConstants.primaryColor.withOpacity(0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? AppConstants.primaryColor : Colors.grey.withOpacity(0.3),
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.outfit(
-            color: isSelected ? AppConstants.primaryColor : ThemeColors.secondaryText(context),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
 
   Widget _buildContent() {
     if (_showSearch) {
@@ -541,14 +591,28 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
 
   Widget _buildSectionTitle(String title) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Text(
-        title,
-        style: GoogleFonts.outfit(
-          color: ThemeColors.primaryText(context),
-          fontSize: 18,
-          fontWeight: FontWeight.bold,
-        ),
+      padding: const EdgeInsets.only(bottom: 16, top: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 4,
+            height: 20,
+            decoration: BoxDecoration(
+              color: AppConstants.primaryColor,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Text(
+            title,
+            style: GoogleFonts.outfit(
+              color: ThemeColors.primaryText(context),
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.5,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -567,135 +631,83 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   }
 
   Widget _buildHorizontalCard(dynamic artist) {
-    final rating = (artist['rating_promedio'] ?? 0.0).toDouble();
-    final hasRating = rating > 0;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return GestureDetector(
-      onTap: () {
-        if (!mounted) return;
-        context.push('/profile/${artist['id']}');
-      },
+      onTap: () => context.push('/profile/${artist['id']}'),
       child: Container(
         width: 150,
-        margin: const EdgeInsets.only(right: 12),
+        margin: const EdgeInsets.only(right: 16, bottom: 10, top: 5),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(20),
           border: Border.all(color: ThemeColors.divider(context)),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
+              color: Colors.black.withOpacity(isDark ? 0.3 : 0.08),
+              blurRadius: 12,
+              offset: const Offset(0, 6),
             ),
           ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Foto con overlay de rating
-            Stack(
-              children: [
-                Container(
-                  height: 110,
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                    color: Theme.of(context).scaffoldBackgroundColor,
-                    image: artist['foto_perfil'] != null
-                        ? DecorationImage(
-                            image: NetworkImage(artist['foto_perfil']),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Stack(
+                  children: [
+                    artist['foto_perfil'] != null
+                        ? Image.network(
+                            artist['foto_perfil'],
+                            width: double.infinity,
+                            height: double.infinity,
                             fit: BoxFit.cover,
                           )
-                        : null,
-                  ),
-                  child: artist['foto_perfil'] == null
-                      ? Center(
-                          child: Icon(
-                            Icons.person,
-                            size: 50,
-                            color: AppConstants.primaryColor.withOpacity(0.3),
+                        : Container(
+                            color: isDark ? AppConstants.bgDarkTertiary : AppConstants.bgLightSecondary,
+                            child: const Center(child: Icon(Icons.person, size: 40)),
                           ),
-                        )
-                      : null,
+                    if (artist['verificado'] == true)
+                      const Positioned(
+                        top: 8,
+                        right: 8,
+                        child: Icon(Icons.verified, color: AppConstants.primaryColor, size: 20),
+                      ),
+                  ],
                 ),
-                // Rating badge
-                if (hasRating)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.star, color: AppConstants.primaryColor, size: 12),
-                          const SizedBox(width: 2),
-                          Text(
-                            rating.toStringAsFixed(1),
-                            style: GoogleFonts.outfit(
-                              color: Colors.white,
-                              fontSize: 11,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                // Verificado badge
-                if (artist['verificado'] == true)
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: AppConstants.primaryColor,
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.verified, color: Colors.black, size: 14),
-                    ),
-                  ),
-              ],
-            ),
-            // Info
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       artist['nombre_artistico'] ?? 'Artista',
                       style: GoogleFonts.outfit(
-                        fontSize: 13,
                         fontWeight: FontWeight.bold,
+                        fontSize: 14,
                         color: ThemeColors.primaryText(context),
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
-                    if (artist['instrumento_principal'] != null)
-                      Text(
-                        artist['instrumento_principal'],
-                        style: GoogleFonts.outfit(
-                          color: ThemeColors.secondaryText(context),
-                          fontSize: 10,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                    const SizedBox(height: 4),
+                    Text(
+                      artist['instrumento_principal'] ?? 'Músico',
+                      style: GoogleFonts.outfit(
+                        color: ThemeColors.secondaryText(context),
+                        fontSize: 11,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -839,7 +851,7 @@ class _ArtistCard extends StatelessWidget {
                         child: Text(
                           artist['nombre_artistico'] ?? 'Artista',
                           style: GoogleFonts.outfit(
-                            fontSize: 16,
+                            fontSize: 18,
                             fontWeight: FontWeight.bold,
                             color: ThemeColors.primaryText(context),
                           ),
@@ -849,7 +861,7 @@ class _ArtistCard extends StatelessWidget {
                       ),
                       if (artist['verificado'] == true) ...[
                         const SizedBox(width: 4),
-                        Icon(Icons.verified, color: AppConstants.primaryColor, size: 16),
+                        Icon(Icons.verified, color: AppConstants.primaryColor, size: 18),
                       ],
                     ],
                   ),
@@ -859,8 +871,9 @@ class _ArtistCard extends StatelessWidget {
                     Text(
                       artist['instrumento_principal'],
                       style: GoogleFonts.outfit(
-                        color: ThemeColors.secondaryText(context),
-                        fontSize: 12,
+                        color: ThemeColors.primaryText(context).withOpacity(0.9),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
@@ -870,14 +883,14 @@ class _ArtistCard extends StatelessWidget {
                   Row(
                     children: [
                       if (artist['ubicacion_base'] != null) ...[
-                        Icon(Icons.location_on, color: ThemeColors.iconSecondary(context), size: 12),
-                        const SizedBox(width: 2),
+                        Icon(Icons.location_on, color: AppConstants.primaryColor, size: 14),
+                        const SizedBox(width: 4),
                         Flexible(
                           child: Text(
                             artist['ubicacion_base'],
                             style: GoogleFonts.outfit(
-                              color: ThemeColors.secondaryText(context),
-                              fontSize: 11,
+                              color: ThemeColors.primaryText(context).withOpacity(0.8),
+                              fontSize: 13,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,

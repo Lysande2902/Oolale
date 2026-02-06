@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import 'package:intl/intl.dart';
 
 class ViewRatingsScreen extends StatefulWidget {
@@ -36,7 +37,7 @@ class _ViewRatingsScreenState extends State<ViewRatingsScreen> {
     try {
       final data = await _supabase
           .from('referencias')
-          .select('*, evaluador:profiles!referencias_evaluador_id_fkey(id, nombre_artistico, foto_perfil)')
+          .select('*, evaluador:perfiles!referencias_evaluador_id_fkey(id, nombre_artistico, foto_perfil)')
           .eq('evaluado_id', widget.userId)
           .order('created_at', ascending: false);
 
@@ -65,8 +66,16 @@ class _ViewRatingsScreenState extends State<ViewRatingsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error cargando calificaciones: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('ViewRatingsScreen._loadRatings', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando calificaciones',
+          onRetry: _loadRatings,
+        );
+      }
     }
   }
 

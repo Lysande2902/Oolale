@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 class NotificationsSettingsScreen extends StatefulWidget {
   const NotificationsSettingsScreen({super.key});
@@ -37,7 +38,7 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
 
     try {
       final data = await _supabase
-          .from('notification_settings')
+          .from('configuracion_notificaciones')
           .select()
           .eq('user_id', userId)
           .maybeSingle();
@@ -57,18 +58,28 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
         });
       } else {
         // Crear configuración por defecto
-        await _createDefaultSettings(userId);
+        await _createDefaultSettings(userId).catchError((e) {
+             ErrorHandler.logError('NotificationsSettingsScreen._loadSettings.createDefault', e);
+        });
         if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
-      debugPrint('Error loading notification settings: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('NotificationsSettingsScreen._loadSettings', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context, 
+          e, 
+          title: 'Error al cargar notificaciones',
+          onRetry: _loadSettings
+        );
+      }
     }
   }
 
   Future<void> _createDefaultSettings(String userId) async {
     try {
-      await _supabase.from('notification_settings').insert({
+      await _supabase.from('configuracion_notificaciones').insert({
         'user_id': userId,
         'push_enabled': true,
         'email_enabled': true,
@@ -81,7 +92,8 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
         'vibration_enabled': true,
       });
     } catch (e) {
-      debugPrint('Error creating default settings: $e');
+      ErrorHandler.logError('NotificationsSettingsScreen._createDefaultSettings', e);
+      rethrow;
     }
   }
 
@@ -91,17 +103,16 @@ class _NotificationsSettingsScreenState extends State<NotificationsSettingsScree
 
     try {
       await _supabase
-          .from('notification_settings')
+          .from('configuracion_notificaciones')
           .update({field: value})
           .eq('user_id', userId);
     } catch (e) {
-      debugPrint('Error updating setting: $e');
+      ErrorHandler.logError('NotificationsSettingsScreen._updateSetting', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error al actualizar configuración'),
-            backgroundColor: AppConstants.errorColor,
-          ),
+        ErrorHandler.showErrorSnackBar(
+          context, 
+          e, 
+          customMessage: 'Error al actualizar notificaciones'
         );
       }
     }

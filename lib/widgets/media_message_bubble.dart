@@ -54,22 +54,42 @@ class MediaMessageBubble extends StatelessWidget {
                 ),
               ),
             Padding(
-              padding: const EdgeInsets.only(left: 16, right: 16, bottom: 10),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    DateFormat('HH:mm').format(message.sentAt),
-                    style: GoogleFonts.outfit(
-                      color: isMe ? Colors.black.withOpacity(0.5) : ThemeColors.secondaryText(context),
-                      fontSize: 10,
-                    ),
+              padding: const EdgeInsets.only(left: 14, right: 14, bottom: 8, top: 2),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isMe 
+                        ? const Color(0xFF1C1C1C) // Negro sólido
+                        : Colors.black.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: isMe ? [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 4,
+                        offset: const Offset(0, 1),
+                      )
+                    ] : null,
                   ),
-                  if (isMe) ...[
-                    const SizedBox(width: 4),
-                    _buildStatusIcon(context),
-                  ],
-                ],
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        DateFormat('HH:mm').format(message.sentAt.toLocal()),
+                        style: GoogleFonts.outfit(
+                          color: isMe ? Colors.white : ThemeColors.primaryText(context),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                      if (isMe) ...[
+                        const SizedBox(width: 6),
+                        _buildStatusIcon(context),
+                      ],
+                    ],
+                  ),
+                ),
               ),
             ),
           ],
@@ -181,25 +201,26 @@ class MediaMessageBubble extends StatelessWidget {
   }
 
   Widget _buildStatusIcon(BuildContext context) {
+    final statusColor = isMe ? Colors.white : Colors.black.withOpacity(0.7);
     switch (message.status) {
       case 'read':
-        return const Icon(
+        return Icon(
           Icons.done_all,
           size: 14,
-          color: AppConstants.primaryColor,
+          color: isMe ? Colors.white : AppConstants.primaryColor,
         );
       case 'delivered':
         return Icon(
           Icons.done_all,
           size: 14,
-          color: Colors.black.withOpacity(0.5),
+          color: statusColor,
         );
       case 'sent':
       default:
         return Icon(
           Icons.done,
           size: 14,
-          color: Colors.black.withOpacity(0.5),
+          color: statusColor,
         );
     }
   }

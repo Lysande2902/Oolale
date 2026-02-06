@@ -110,6 +110,7 @@ class FontSizeScreen extends StatelessWidget {
             style: GoogleFonts.outfit(
               fontSize: 20 * fontScale,
               fontWeight: FontWeight.bold,
+              color: const Color(0xFF222222), // Texto oscuro forzado para fondo blanco
             ),
           ),
           const SizedBox(height: 8),
@@ -117,6 +118,7 @@ class FontSizeScreen extends StatelessWidget {
             'Este es un texto de ejemplo para que puedas ver cómo se verá el tamaño de fuente en la aplicación.',
             style: GoogleFonts.outfit(
               fontSize: 14 * fontScale,
+              color: const Color(0xFF444444), // Gris oscuro forzado
             ),
           ),
           const SizedBox(height: 8),

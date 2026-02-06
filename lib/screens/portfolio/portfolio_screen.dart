@@ -8,6 +8,8 @@ import 'package:oolale_mobile/config/constants.dart';
 import 'package:oolale_mobile/services/media_service.dart';
 import 'package:oolale_mobile/utils/connectivity_helper.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
+import '../../widgets/enhanced_image_viewer.dart';
 import 'upload_media_screen.dart';
 import 'media_detail_screen.dart';
 
@@ -46,7 +48,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       debugPrint('🔄 Cargando media para usuario: ${widget.userId}');
       
       final response = await _supabase
-          .from('portfolio_media')
+          .from('archivos_multimedia')
           .select()
           .eq('profile_id', widget.userId)
           .order('created_at', ascending: false);
@@ -62,8 +64,16 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         debugPrint('✅ Lista actualizada con ${_mediaList.length} archivos');
       }
     } catch (e) {
-      debugPrint('❌ Error cargando media: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('PortfolioScreen._loadMedia', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error al cargar portfolio',
+          onRetry: _loadMedia,
+        );
+      }
     }
   }
 
@@ -211,13 +221,9 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         await _loadMedia();
       }
     } catch (e) {
+      ErrorHandler.logError('PortfolioScreen._updateMedia', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al actualizar: $e', style: GoogleFonts.outfit()),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al actualizar título');
       }
     }
   }
@@ -262,14 +268,10 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
         await _loadMedia();
       }
     } catch (e) {
+      ErrorHandler.logError('PortfolioScreen._deleteMedia', e);
       if (mounted) {
         ScaffoldMessenger.of(context).clearSnackBars();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al eliminar: $e', style: GoogleFonts.outfit()),
-            backgroundColor: Colors.red,
-          ),
-        );
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al eliminar archivo');
       }
     }
   }
@@ -355,6 +357,7 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
   Widget _buildGrid() {
     final myId = _supabase.auth.currentUser?.id;
     final isMe = widget.userId == myId;
+    final images = _filteredMedia.where((m) => m.tipo == 'imagen').toList();
 
     return MasonryGridView.count(
       crossAxisCount: 2,
@@ -365,10 +368,35 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
       itemBuilder: (context, index) {
         final media = _filteredMedia[index];
         return GestureDetector(
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => MediaDetailScreen(media: media)),
-          ),
+          onTap: () {
+            // If it's an image, open enhanced viewer with gallery
+            if (media.tipo == 'imagen') {
+              final imageIndex = images.indexOf(media);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => EnhancedImageViewer(
+                    images: images,
+                    initialIndex: imageIndex,
+                    onDelete: isMe ? () {
+                      Navigator.pop(context);
+                      _showDeleteConfirmation(media);
+                    } : null,
+                    onEdit: isMe ? (currentTitle) {
+                      Navigator.pop(context);
+                      _showEditDialog(media);
+                    } : null,
+                  ),
+                ),
+              );
+            } else {
+              // For video/audio, use the detail screen
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => MediaDetailScreen(media: media)),
+              );
+            }
+          },
           onLongPress: isMe ? () => _showMediaOptions(media) : null,
           child: Container(
             decoration: BoxDecoration(
@@ -386,7 +414,37 @@ class _PortfolioScreenState extends State<PortfolioScreen> {
                       AspectRatio(
                         aspectRatio: media.tipo == 'imagen' ? 0.8 : 1.2,
                         child: media.tipo == 'imagen' 
-                            ? Image.network(media.url, fit: BoxFit.cover)
+                            ? Image.network(
+                                media.url, 
+                                fit: BoxFit.cover,
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    color: Theme.of(context).cardColor,
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        value: loadingProgress.expectedTotalBytes != null
+                                            ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                            : null,
+                                        color: AppConstants.primaryColor,
+                                        strokeWidth: 2,
+                                      ),
+                                    ),
+                                  );
+                                },
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    color: Theme.of(context).cardColor,
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      color: ThemeColors.iconSecondary(context),
+                                      size: 40,
+                                    ),
+                                  );
+                                },
+                                // Enable caching
+                                cacheWidth: 400,
+                              )
                             : Container(
                                 color: Theme.of(context).cardColor,
                                 child: Icon(

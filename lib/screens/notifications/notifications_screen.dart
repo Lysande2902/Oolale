@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -40,7 +41,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
-          table: 'notifications',
+          table: 'notificaciones',
           filter: PostgresChangeFilter(
             type: PostgresChangeFilterType.eq,
             column: 'user_id',
@@ -64,7 +65,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       debugPrint('📥 Cargando notificaciones para: $userId');
       
       final data = await _supabase
-          .from('notifications')
+          .from('notificaciones')
           .select()
           .eq('user_id', userId)
           .order('created_at', ascending: false);
@@ -78,27 +79,35 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Error cargando notificaciones: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('NotificationsScreen._loadNotifications', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando notificaciones',
+          onRetry: _loadNotifications,
+        );
+      }
     }
   }
 
   Future<void> _markAsRead(String notificationId) async {
     try {
       await _supabase
-          .from('notifications')
+          .from('notificaciones')
           .update({'leido': true})
           .eq('id', notificationId);
       _loadNotifications();
     } catch (e) {
-      debugPrint('Error marcando notificación: $e');
+      ErrorHandler.logError('NotificationsScreen._markAsRead', e);
     }
   }
 
   Future<void> _deleteNotification(String notificationId) async {
     try {
       await _supabase
-          .from('notifications')
+          .from('notificaciones')
           .delete()
           .eq('id', notificationId);
       _loadNotifications();
@@ -113,7 +122,10 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
         );
       }
     } catch (e) {
-      debugPrint('Error eliminando notificación: $e');
+      ErrorHandler.logError('NotificationsScreen._deleteNotification', e);
+      if (mounted) {
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al eliminar notificación');
+      }
     }
   }
 
@@ -122,10 +134,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (userId == null) return;
 
     try {
-      await _supabase.from('notifications').update({'leido': true}).eq('user_id', userId);
+      await _supabase.from('notificaciones').update({'leido': true}).eq('user_id', userId);
       _loadNotifications();
     } catch (e) {
-      debugPrint('Error: $e');
+      ErrorHandler.logError('NotificationsScreen._markAllAsRead', e);
+      if (mounted) {
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al marcar notificaciones');
+      }
     }
   }
 
@@ -187,7 +202,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     if (notification['leido'] == false) {
       try {
         await _supabase
-            .from('notifications')
+            .from('notificaciones')
             .update({'leido': true})
             .eq('id', notification['id']);
         _loadNotifications();
@@ -201,22 +216,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     final data = notification['data'] as Map<String, dynamic>?;
 
     if (data == null) return;
-
+    
     try {
       switch (tipo) {
         case 'gig_postulation':
-          if (data['gig_id'] != null) {
-            context.push('/gig/${data['gig_id']}');
+          if (data['event_id'] != null) {
+            context.push('/gig/${data['event_id']}');
           }
           break;
         case 'connection_request':
-          if (data['sender_id'] != null) {
-            context.push('/portfolio/${data['sender_id']}');
-          }
+          context.push('/connection-requests');
+          break;
+        case 'connection_accepted':
+          context.push('/connections');
           break;
         case 'message':
+        case 'new_message':
           if (data['conversation_id'] != null) {
             context.push('/chat/${data['conversation_id']}');
+          } else if (data['user_id'] != null) {
+            context.push('/messages/${data['user_id']}');
           }
           break;
         default:
@@ -381,7 +400,10 @@ class _NotificationTile extends StatelessWidget {
         return Icons.event;
       case 'connection_request':
         return Icons.person_add;
+      case 'connection_accepted':
+        return Icons.check_circle_rounded;
       case 'message':
+      case 'new_message':
         return Icons.message;
       case 'payment':
         return Icons.payment;
@@ -396,7 +418,10 @@ class _NotificationTile extends StatelessWidget {
         return AppConstants.primaryColor;
       case 'connection_request':
         return Colors.blue;
+      case 'connection_accepted':
+        return Colors.green;
       case 'message':
+      case 'new_message':
         return Colors.green;
       case 'payment':
         return Colors.orange;

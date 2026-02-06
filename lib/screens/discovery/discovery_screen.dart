@@ -57,18 +57,21 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     try {
       final myId = _supabase.auth.currentUser?.id;
       
-      // Obtener lista de usuarios bloqueados
+      // Obtener lista de usuarios bloqueados (Mutual: mis bloqueados + quienes me bloquearon)
       List<String> blockedIds = [];
       if (myId != null) {
         final blockedUsers = await _supabase
             .from('usuarios_bloqueados')
-            .select('bloqueado_id')
-            .eq('usuario_id', myId)
+            .select('usuario_id, bloqueado_id')
+            .or('usuario_id.eq.$myId,bloqueado_id.eq.$myId')
             .eq('activo', true);
-        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+        
+        blockedIds = blockedUsers.map((b) => 
+          b['usuario_id'] == myId ? b['bloqueado_id'].toString() : b['usuario_id'].toString()
+        ).toList();
       }
       
-      var queryBuilder = _supabase.from('profiles').select();
+      var queryBuilder = _supabase.from('perfiles').select();
       
       if (query.isNotEmpty) {
         queryBuilder = queryBuilder.ilike('nombre_artistico', '%$query%');
@@ -87,14 +90,20 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       if (myId != null) {
         queryBuilder = queryBuilder.neq('id', myId);
       }
+      if (blockedIds.isNotEmpty) {
+        queryBuilder = queryBuilder.filter('id', 'not.in', '(${blockedIds.join(',')})');
+      }
 
       final from = _page * _limit;
       final to = from + _limit - 1;
       final response = await queryBuilder.range(from, to);
       
       if (mounted) {
-        // Filtrar usuarios bloqueados
-        final filteredResponse = response.where((u) => !blockedIds.contains(u['id'])).toList();
+        // Filtrar usuarios bloqueados y a uno mismo
+        final filteredResponse = response.where((u) => 
+          u['id'] != myId && 
+          !blockedIds.contains(u['id'])
+        ).toList();
         
         setState(() {
           if (isLoadMore) {
@@ -162,7 +171,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
       // Verificar si ya existe una conexión
       final existing = await _supabase
-          .from('connections')
+          .from('conexiones')
           .select()
           .eq('usuario_id', myId)
           .eq('conectado_id', targetId)
@@ -178,14 +187,14 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
       }
 
       // Crear nueva solicitud
-      await _supabase.from('connections').insert({
+      await _supabase.from('conexiones').insert({
         'usuario_id': myId,
         'conectado_id': targetId,
         'estatus': 'pending',
       });
 
       // Notificar al usuario objetivo
-      await _supabase.from('notifications').insert({
+      await _supabase.from('notificaciones').insert({
         'user_id': targetId,
         'tipo': 'connection_request',
         'titulo': 'Nueva solicitud de conexión',

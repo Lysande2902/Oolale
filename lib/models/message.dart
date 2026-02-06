@@ -1,5 +1,5 @@
 class Message {
-  final int id;
+  final String id;
   final String senderId; // UUID
   final String receiverId; // UUID
   final String content;
@@ -25,11 +25,20 @@ class Message {
 
   factory Message.fromJson(Map<String, dynamic> json) {
     return Message(
-      id: json['id'] ?? 0,
+      id: json['id']?.toString() ?? '',
       senderId: json['remitente_id']?.toString() ?? '',
       receiverId: json['destinatario_id']?.toString() ?? '',
-      content: json['riff_text'] ?? '',
-      sentAt: DateTime.parse(json['created_at'] ?? DateTime.now().toIso8601String()),
+      content: json['contenido'] ?? '',
+      sentAt: () {
+        final dateStr = json['created_at']?.toString();
+        if (dateStr == null) return DateTime.now();
+        // Supabase puede devolver formatos con o sin T, con o sin zona horaria
+        // Si no tiene indicador de zona, asumimos UTC que es como guarda Postgres
+        if (!dateStr.contains('Z') && !dateStr.contains('+') && !dateStr.contains('-')) {
+          return DateTime.parse('${dateStr.replaceFirst(' ', 'T')}Z').toLocal();
+        }
+        return DateTime.parse(dateStr).toLocal();
+      }(),
       isRead: json['leido'] == 1 || json['leido'] == true,
       deliveredAt: json['delivered_at'] != null 
           ? DateTime.parse(json['delivered_at']) 

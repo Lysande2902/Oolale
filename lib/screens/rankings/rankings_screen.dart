@@ -42,56 +42,63 @@ class _RankingsScreenState extends State<RankingsScreen> with SingleTickerProvid
     try {
       final myId = _supabase.auth.currentUser?.id;
       
-      // Obtener lista de usuarios bloqueados
+      // Obtener lista de usuarios bloqueados (Mutual: mis bloqueados + quienes me bloquearon)
       List<String> blockedIds = [];
       if (myId != null) {
         final blockedUsers = await _supabase
             .from('usuarios_bloqueados')
-            .select('bloqueado_id')
-            .eq('usuario_id', myId)
+            .select('usuario_id, bloqueado_id')
+            .or('usuario_id.eq.$myId,bloqueado_id.eq.$myId')
             .eq('activo', true);
         
-        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+        blockedIds = blockedUsers.map((b) => 
+          b['usuario_id'] == myId ? b['bloqueado_id'].toString() : b['usuario_id'].toString()
+        ).toList();
       }
       
-      // Top por calificación (mínimo 3 calificaciones para ser justo)
-      var ratingQuery = _supabase.from('profiles').select();
-      if (myId != null) ratingQuery = ratingQuery.neq('id', myId);
+      // 1. Cargando rankings por total_conexiones (Más Populares)
+      var popularesQuery = _supabase.from('perfiles').select();
+      if (myId != null) {
+        popularesQuery = popularesQuery.neq('id', myId);
+      }
+      if (blockedIds.isNotEmpty) {
+        popularesQuery = popularesQuery.filter('id', 'not.in', '(${blockedIds.join(',')})');
+      }
       
-      final ratedData = await ratingQuery
-          .gte('total_calificaciones', 3)
-          .order('rating_promedio', ascending: false)
-          .order('total_calificaciones', ascending: false)
-          .limit(50);
-      
-      // Top por conexiones
-      var connectionsQuery = _supabase.from('profiles').select();
-      if (myId != null) connectionsQuery = connectionsQuery.neq('id', myId);
-      
-      final connectedData = await connectionsQuery
+      final popularesData = await popularesQuery
           .order('total_conexiones', ascending: false)
-          .limit(50);
+          .limit(20);
+
+      // 2. Cargando rankings por rating_promedio (Mejor Valorerados)
+      var mejorValoradosQuery = _supabase.from('perfiles').select();
+      if (myId != null) {
+        mejorValoradosQuery = mejorValoradosQuery.neq('id', myId);
+      }
+      if (blockedIds.isNotEmpty) {
+        mejorValoradosQuery = mejorValoradosQuery.filter('id', 'not.in', '(${blockedIds.join(',')})');
+      }
+      
+      final mejorValoradosData = await mejorValoradosQuery
+          .not('rating_promedio', 'is', null)
+          .order('rating_promedio', ascending: false)
+          .limit(20);
       
       // Top por actividad (eventos + posts)
-      var activeQuery = _supabase.from('profiles').select();
+      var activeQuery = _supabase.from('perfiles').select();
       if (myId != null) activeQuery = activeQuery.neq('id', myId);
+      if (blockedIds.isNotEmpty) {
+        activeQuery = activeQuery.filter('id', 'not.in', '(${blockedIds.join(',')})');
+      }
       
       final activeData = await activeQuery
           .order('total_eventos', ascending: false)
           .limit(50);
       
       if (mounted) {
-        // Filtrar usuarios bloqueados de todos los rankings
         setState(() {
-          _topRated = (ratedData as List)
-              .where((user) => !blockedIds.contains(user['id']))
-              .toList();
-          _mostConnected = (connectedData as List)
-              .where((user) => !blockedIds.contains(user['id']))
-              .toList();
-          _mostActive = (activeData as List)
-              .where((user) => !blockedIds.contains(user['id']))
-              .toList();
+          _topRated = mejorValoradosData;
+          _mostConnected = popularesData;
+          _mostActive = activeData;
           _isLoading = false;
         });
       }

@@ -7,18 +7,6 @@ import '../../config/theme_colors.dart';
 class HelpCenterScreen extends StatelessWidget {
   const HelpCenterScreen({super.key});
 
-  Future<void> _launchEmail() async {
-    final Uri emailUri = Uri(
-      scheme: 'mailto',
-      path: 'soporte@oolale.app',
-      query: 'subject=Soporte Óolale',
-    );
-    
-    if (await canLaunchUrl(emailUri)) {
-      await launchUrl(emailUri);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -60,42 +48,7 @@ class HelpCenterScreen extends StatelessWidget {
           ),
           
           const SizedBox(height: 30),
-          _buildSection(context, 'CONTACTO'),
-          _buildContactCard(
-            context,
-            'Email de Soporte',
-            'soporte@oolale.app',
-            Icons.email_rounded,
-            onTap: _launchEmail,
-          ),
-          _buildContactCard(
-            context,
-            'Reportar un Problema',
-            'Describe el problema que encontraste',
-            Icons.bug_report_rounded,
-            onTap: _launchEmail,
-          ),
-          
-          const SizedBox(height: 30),
-          _buildSection(context, 'RECURSOS'),
-          _buildResourceCard(
-            context,
-            'Guía de Inicio',
-            'Aprende a usar Óolale',
-            Icons.school_rounded,
-          ),
-          _buildResourceCard(
-            context,
-            'Consejos de Seguridad',
-            'Mantén tu cuenta segura',
-            Icons.security_rounded,
-          ),
-          _buildResourceCard(
-            context,
-            'Comunidad',
-            'Únete a nuestra comunidad',
-            Icons.groups_rounded,
-          ),
+          _buildHelpInfoCard(context),
         ],
       ),
     );
@@ -147,66 +100,33 @@ class HelpCenterScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildContactCard(
-    BuildContext context,
-    String title,
-    String subtitle,
-    IconData icon,
-    {VoidCallback? onTap}
-  ) {
+  Widget _buildHelpInfoCard(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ThemeColors.divider(context)),
+        color: AppConstants.primaryColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.2)),
       ),
-      child: ListTile(
-        onTap: onTap,
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppConstants.primaryColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
+      child: Column(
+        children: [
+          const Icon(Icons.emergency_rounded, color: AppConstants.primaryColor, size: 30),
+          const SizedBox(height: 12),
+          Text(
+            '¿Sigues con dudas?',
+            style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
           ),
-          child: Icon(icon, color: AppConstants.primaryColor, size: 22),
-        ),
-        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, 
-          style: TextStyle(color: ThemeColors.hintText(context), fontSize: 12)),
-        trailing: Icon(Icons.chevron_right_rounded, 
-          color: ThemeColors.divider(context)),
-      ),
-    );
-  }
-
-  Widget _buildResourceCard(
-    BuildContext context,
-    String title,
-    String subtitle,
-    IconData icon,
-  ) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ThemeColors.divider(context)),
-      ),
-      child: ListTile(
-        leading: Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: AppConstants.accentColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
+          const SizedBox(height: 8),
+          Text(
+            'Estamos trabajando para expandir nuestras guías. Si tienes un problema crítico, contacta a la administración de tu organización.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(
+              color: ThemeColors.secondaryText(context),
+              fontSize: 13,
+              height: 1.5,
+            ),
           ),
-          child: Icon(icon, color: AppConstants.accentColor, size: 22),
-        ),
-        title: Text(title, style: GoogleFonts.outfit(fontWeight: FontWeight.w600)),
-        subtitle: Text(subtitle, 
-          style: TextStyle(color: ThemeColors.hintText(context), fontSize: 12)),
-        trailing: Icon(Icons.chevron_right_rounded, 
-          color: ThemeColors.divider(context)),
+        ],
       ),
     );
   }

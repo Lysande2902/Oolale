@@ -32,27 +32,27 @@ class _DataUsageScreenState extends State<DataUsageScreen> {
 
     try {
       final connections = await _supabase
-          .from('connections')
+          .from('conexiones')
           .select()
           .eq('usuario_id', userId)
           .count();
       
       final messages = await _supabase
-          .from('messages')
+          .from('conversaciones')
           .select()
-          .eq('sender_id', userId)
+          .eq('remitente_id', userId)
           .count();
       
       final events = await _supabase
-          .from('events')
+          .from('eventos')
           .select()
-          .eq('creator_id', userId)
+          .eq('organizador_id', userId)
           .count();
       
       final media = await _supabase
-          .from('portfolio_media')
+          .from('archivos_multimedia')
           .select()
-          .eq('user_id', userId)
+          .eq('profile_id', userId)
           .count();
 
       if (mounted) {

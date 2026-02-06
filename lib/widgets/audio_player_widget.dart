@@ -4,12 +4,16 @@ import 'package:just_audio/just_audio.dart';
 import '../config/constants.dart';
 import '../config/theme_colors.dart';
 
+/// Widget profesional para reproducir audios con controles completos
+/// Incluye play/pause, barra de progreso, velocidad de reproducción, y loop
 class AudioPlayerWidget extends StatefulWidget {
   final String audioUrl;
+  final String? title;
 
   const AudioPlayerWidget({
     super.key,
     required this.audioUrl,
+    this.title,
   });
 
   @override
@@ -23,6 +27,8 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
   Duration _position = Duration.zero;
   bool _isLoading = true;
   String? _error;
+  double _speed = 1.0;
+  bool _isLooping = false;
 
   @override
   void initState() {
@@ -58,8 +64,8 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
             _isPlaying = state.playing;
           });
           
-          // Auto-reset when finished
-          if (state.processingState == ProcessingState.completed) {
+          // Auto-reset when finished (if not looping)
+          if (state.processingState == ProcessingState.completed && !_isLooping) {
             _audioPlayer.seek(Duration.zero);
             _audioPlayer.pause();
           }
@@ -89,6 +95,46 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
     }
   }
 
+  void _changeSpeed() {
+    setState(() {
+      if (_speed == 1.0) {
+        _speed = 1.25;
+      } else if (_speed == 1.25) {
+        _speed = 1.5;
+      } else if (_speed == 1.5) {
+        _speed = 2.0;
+      } else {
+        _speed = 1.0;
+      }
+      _audioPlayer.setSpeed(_speed);
+    });
+  }
+
+  void _toggleLoop() {
+    setState(() {
+      _isLooping = !_isLooping;
+      _audioPlayer.setLoopMode(_isLooping ? LoopMode.one : LoopMode.off);
+    });
+  }
+
+  void _skipForward() {
+    final newPosition = _position + const Duration(seconds: 10);
+    if (newPosition < _duration) {
+      _audioPlayer.seek(newPosition);
+    } else {
+      _audioPlayer.seek(_duration);
+    }
+  }
+
+  void _skipBackward() {
+    final newPosition = _position - const Duration(seconds: 10);
+    if (newPosition > Duration.zero) {
+      _audioPlayer.seek(newPosition);
+    } else {
+      _audioPlayer.seek(Duration.zero);
+    }
+  }
+
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final minutes = twoDigits(duration.inMinutes.remainder(60));
@@ -108,9 +154,38 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'Mensaje de voz',
+          widget.title ?? 'Mensaje de voz',
           style: GoogleFonts.outfit(fontWeight: FontWeight.bold),
         ),
+        actions: [
+          // Speed control
+          IconButton(
+            icon: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppConstants.primaryColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                '${_speed}x',
+                style: GoogleFonts.outfit(
+                  color: AppConstants.primaryColor,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+            onPressed: _changeSpeed,
+          ),
+          // Loop control
+          IconButton(
+            icon: Icon(
+              Icons.repeat,
+              color: _isLooping ? AppConstants.primaryColor : ThemeColors.icon(context),
+            ),
+            onPressed: _toggleLoop,
+          ),
+        ],
       ),
       body: Center(
         child: Padding(
@@ -118,21 +193,21 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Audio icon
+              // Audio icon with animation
               Container(
-                width: 120,
-                height: 120,
+                width: 140,
+                height: 140,
                 decoration: BoxDecoration(
                   color: AppConstants.primaryColor.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
                   _isPlaying ? Icons.graphic_eq : Icons.audiotrack,
-                  size: 60,
+                  size: 70,
                   color: AppConstants.primaryColor,
                 ),
               ),
-              const SizedBox(height: 40),
+              const SizedBox(height: 50),
               
               // Error or loading state
               if (_error != null)
@@ -189,24 +264,48 @@ class _AudioPlayerWidgetState extends State<AudioPlayerWidget> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 40),
                 
-                // Play/Pause button
-                GestureDetector(
-                  onTap: _togglePlayPause,
-                  child: Container(
-                    width: 80,
-                    height: 80,
-                    decoration: const BoxDecoration(
-                      color: AppConstants.primaryColor,
-                      shape: BoxShape.circle,
+                // Playback controls
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    // Skip backward 10s
+                    IconButton(
+                      icon: const Icon(Icons.replay_10),
+                      iconSize: 40,
+                      color: ThemeColors.icon(context),
+                      onPressed: _skipBackward,
                     ),
-                    child: Icon(
-                      _isPlaying ? Icons.pause : Icons.play_arrow,
-                      size: 40,
-                      color: Colors.black,
+                    const SizedBox(width: 20),
+                    
+                    // Play/Pause button
+                    GestureDetector(
+                      onTap: _togglePlayPause,
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: const BoxDecoration(
+                          color: AppConstants.primaryColor,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          _isPlaying ? Icons.pause : Icons.play_arrow,
+                          size: 40,
+                          color: Colors.black,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 20),
+                    
+                    // Skip forward 10s
+                    IconButton(
+                      icon: const Icon(Icons.forward_10),
+                      iconSize: 40,
+                      color: ThemeColors.icon(context),
+                      onPressed: _skipForward,
+                    ),
+                  ],
                 ),
               ],
             ],

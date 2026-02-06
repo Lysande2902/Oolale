@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' as sb;
 import '../models/user.dart';
 import '../services/storage_service_auth.dart';
+import '../utils/error_handler.dart';
 
 enum AuthStatus { checking, authenticated, unauthenticated }
 
@@ -98,13 +99,13 @@ class AuthProvider extends ChangeNotifier {
       }
       return false;
     } on sb.AuthException catch (e) {
-      debugPrint('AUTH_PROVIDER: Error AuthException: ${e.message}');
+      ErrorHandler.logError('AuthProvider.login', e);
       _errorMessage = e.message;
       _status = AuthStatus.unauthenticated;
       notifyListeners();
       return false;
     } catch (e) {
-      debugPrint('AUTH_PROVIDER: Error general: $e');
+      ErrorHandler.logError('AuthProvider.login', e);
       _errorMessage = 'Ocurrió un error inesperado: $e';
       _status = AuthStatus.unauthenticated;
       notifyListeners();
@@ -160,14 +161,13 @@ class AuthProvider extends ChangeNotifier {
       notifyListeners();
       return false;
     } on sb.AuthException catch (e) {
-      debugPrint('AUTH_PROVIDER: Error AuthException: ${e.message}');
-      debugPrint('AUTH_PROVIDER: Error code: ${e.statusCode}');
+      ErrorHandler.logError('AuthProvider.register', e);
       _errorMessage = e.message;
       _status = AuthStatus.unauthenticated;
       notifyListeners();
       return false;
     } catch (e) {
-      debugPrint('AUTH_PROVIDER: Error general: $e');
+      ErrorHandler.logError('AuthProvider.register', e);
       _errorMessage = 'Ocurrió un error inesperado: $e';
       _status = AuthStatus.unauthenticated;
       notifyListeners();

@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -43,258 +44,299 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Usamos LayoutBuilder para adaptar el contenido a la altura disponible
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      body: SafeArea(
-        child: GestureDetector(
-          onTap: () => FocusScope.of(context).unfocus(),
-          child: CustomScrollView(
-            slivers: [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        const Spacer(flex: 2),
+      backgroundColor: AppConstants.backgroundColor,
+      resizeToAvoidBottomInset: false, // Evita que el teclado rompa el layout (el usuario pidió sin scroll)
+      body: Stack(
+        children: [
+          // Fondo decorativo sutil
+          Positioned(
+            top: -100,
+            right: -100,
+            child: CircleAvatar(
+              radius: 150,
+              backgroundColor: AppConstants.primaryColor.withOpacity(0.08),
+            ),
+          ),
+          Positioned(
+            bottom: -50,
+            left: -50,
+            child: CircleAvatar(
+              radius: 120,
+              backgroundColor: AppConstants.primaryLight.withOpacity(0.06),
+            ),
+          ),
+          
+          SafeArea(
+            child: GestureDetector(
+              onTap: () => FocusScope.of(context).unfocus(),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28.0),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    children: [
+                      const Spacer(), 
 
-                        // Logo and Brand
-                        FadeInDown(
-                          duration: const Duration(milliseconds: 600),
-                          child: Column(
-                            children: [
-                              Container(
-                                height: 120,
-                                width: 120,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      AppConstants.primaryColor,
-                                      AppConstants.primaryColor.withOpacity(0.7),
-                                    ],
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
+                      // Logo and Brand
+                      FadeInDown(
+                        duration: const Duration(milliseconds: 800),
+                        child: Column(
+                          children: [
+                            Container(
+                              height: 100,
+                              width: 100,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(30),
+                                color: AppConstants.primaryColor,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppConstants.primaryColor.withOpacity(0.4),
+                                    blurRadius: 25,
+                                    offset: const Offset(0, 10),
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppConstants.primaryColor.withOpacity(0.3),
-                                      blurRadius: 30,
-                                      offset: const Offset(0, 10),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.multitrack_audio_rounded,
-                                  size: 60,
-                                  color: Colors.black,
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(30),
+                                child: Image.asset(
+                                  'assets/images/logo.png',
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return const Icon(
+                                      Icons.music_note_rounded,
+                                      size: 50,
+                                      color: Colors.black,
+                                    );
+                                  },
                                 ),
                               ),
-                              const SizedBox(height: 24),
-                              Text(
-                                'ÓOLALE',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 42,
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 2,
-                                  color: ThemeColors.primaryText(context),
-                                ),
+                            ),
+                            const SizedBox(height: 24), // Reducido ligeramente
+                            Text(
+                              'ÓOLALE',
+                              style: GoogleFonts.poppins(
+                                fontSize: 48, // Ajustado ligeramente para pantallas pequeñas
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 8,
+                                color: Colors.white,
+                                height: 1,
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Conecta con músicos de todo el mundo',
+                            ),
+                            const SizedBox(height: 8),
+                            Opacity(
+                              opacity: 0.7,
+                              child: Text(
+                                'EL LATIDO DE TU MÚSICA',
                                 textAlign: TextAlign.center,
                                 style: GoogleFonts.outfit(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w400,
-                                  color: ThemeColors.secondaryText(context),
-                                  height: 1.4,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 3,
+                                  color: Colors.white,
                                 ),
                               ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 60),
-
-                        // Email Field
-                        FadeInUp(
-                          delay: const Duration(milliseconds: 200),
-                          child: _buildTextField(
-                            controller: _emailController,
-                            label: 'Correo electrónico',
-                            hint: 'tu@correo.com',
-                            icon: Icons.email_outlined,
-                            inputType: TextInputType.emailAddress,
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return 'Ingresa tu correo';
-                              }
-                              if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
-                                return 'Correo inválido';
-                              }
-                              return null;
-                            },
-                          ),
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        // Password Field
-                        FadeInUp(
-                          delay: const Duration(milliseconds: 300),
-                          child: _buildTextField(
-                            controller: _passwordController,
-                            label: 'Contraseña',
-                            hint: 'Tu contraseña',
-                            icon: Icons.lock_outline_rounded,
-                            isPassword: true,
-                            obscureText: _obscurePassword,
-                            suffixIcon: IconButton(
-                              icon: Icon(
-                                _obscurePassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
-                                color: ThemeColors.secondaryText(context),
-                              ),
-                              onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Ingresa tu contraseña';
-                              }
-                              return null;
-                            },
-                          ),
+                          ],
                         ),
+                      ),
 
-                        const SizedBox(height: 16),
+                      const Spacer(flex: 2), // Espacio flexible
 
-                        // Remember Me & Forgot Password
-                        FadeInUp(
-                          delay: const Duration(milliseconds: 400),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              Row(
+                      // Email Field
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 200),
+                        child: _buildTextField(
+                          controller: _emailController,
+                          label: 'CORREO ELECTRÓNICO',
+                          hint: 'tu@correo.com',
+                          icon: Icons.alternate_email_rounded,
+                          inputType: TextInputType.emailAddress,
+                          validator: (value) {
+                            if (value == null || value.trim().isEmpty) {
+                              return 'Ingresa tu correo';
+                            }
+                            if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(value)) {
+                              return 'Correo inválido';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
+
+                      // Password Field
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 300),
+                        child: _buildTextField(
+                          controller: _passwordController,
+                          label: 'CONTRASEÑA',
+                          hint: '••••••••',
+                          icon: Icons.lock_outline_rounded,
+                          isPassword: true,
+                          obscureText: _obscurePassword,
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscurePassword ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                              color: Colors.white54,
+                              size: 20,
+                            ),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Ingresa tu contraseña';
+                            }
+                            return null;
+                          },
+                        ),
+                      ),
+
+                      const SizedBox(height: 12),
+
+                      // Remember Me & Forgot Password
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 400),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                setState(() => _rememberMe = !_rememberMe);
+                                final authProvider = Provider.of<AuthProvider>(context, listen: false);
+                                authProvider.setRememberMe(_rememberMe);
+                              },
+                              child: Row(
                                 children: [
-                                  SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: Checkbox(
-                                      value: _rememberMe,
-                                      onChanged: (value) {
-                                        setState(() => _rememberMe = value ?? false);
-                                        final authProvider = Provider.of<AuthProvider>(context, listen: false);
-                                        authProvider.setRememberMe(value ?? false);
-                                      },
-                                      activeColor: AppConstants.primaryColor,
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                                  Container(
+                                    width: 20,
+                                    height: 20,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(6),
+                                      border: Border.all(
+                                        color: _rememberMe ? AppConstants.primaryColor : Colors.white24,
+                                        width: 1.5,
+                                      ),
+                                      color: _rememberMe ? AppConstants.primaryColor : Colors.transparent,
                                     ),
+                                    child: _rememberMe 
+                                      ? const Icon(Icons.check, size: 14, color: Colors.black)
+                                      : null,
                                   ),
                                   const SizedBox(width: 8),
                                   Text(
                                     'Recordarme',
                                     style: GoogleFonts.outfit(
                                       fontSize: 13,
-                                      color: ThemeColors.secondaryText(context),
+                                      color: Colors.white70,
                                     ),
                                   ),
                                 ],
                               ),
-                              TextButton(
-                                onPressed: () => context.push('/forgot-password'),
-                                child: Text(
-                                  '¿Olvidaste tu contraseña?',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppConstants.primaryColor,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        const SizedBox(height: 40),
-
-                        // Login Button
-                        FadeInUp(
-                          delay: const Duration(milliseconds: 500),
-                          child: _isLoading
-                              ? const Center(
-                                  child: CircularProgressIndicator(
-                                    color: AppConstants.primaryColor,
-                                  ),
-                                )
-                              : SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton(
-                                    onPressed: _handleLogin,
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppConstants.primaryColor,
-                                      foregroundColor: Colors.black,
-                                      padding: const EdgeInsets.symmetric(vertical: 18),
-                                      elevation: 0,
-                                      shadowColor: AppConstants.primaryColor.withOpacity(0.5),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(16),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      'INICIAR SESIÓN',
-                                      style: GoogleFonts.outfit(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.2,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                        ),
-
-                        const Spacer(flex: 3),
-
-                        // Register Link
-                        FadeInUp(
-                          delay: const Duration(milliseconds: 800),
-                          child: Center(
-                            child: TextButton(
-                              onPressed: () => context.push('/register'),
-                              child: Text.rich(
-                                TextSpan(
-                                  text: '¿No tienes cuenta? ',
-                                  style: GoogleFonts.outfit(
-                                    fontSize: 14,
-                                    color: ThemeColors.secondaryText(context),
-                                  ),
-                                  children: [
-                                    TextSpan(
-                                      text: 'Regístrate gratis',
-                                      style: GoogleFonts.outfit(
-                                        fontWeight: FontWeight.w700,
-                                        color: AppConstants.primaryColor,
-                                      ),
-                                    ),
-                                  ],
+                            ),
+                            TextButton(
+                              onPressed: () => context.push('/forgot-password'),
+                              style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                              child: Text(
+                                '¿Olvidaste tu contraseña?',
+                                style: GoogleFonts.outfit(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppConstants.primaryColor,
                                 ),
                               ),
                             ),
+                          ],
+                        ),
+                      ),
+
+                      const Spacer(flex: 2),
+
+                      // Login Button
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 500),
+                        child: _isLoading
+                            ? const Center(
+                                child: CircularProgressIndicator(
+                                  color: AppConstants.primaryColor,
+                                ),
+                              )
+                            : Container(
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(18),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppConstants.primaryColor.withOpacity(0.3),
+                                      blurRadius: 20,
+                                      offset: const Offset(0, 8),
+                                    ),
+                                  ],
+                                ),
+                                child: ElevatedButton(
+                                  onPressed: _handleLogin,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppConstants.primaryColor,
+                                    foregroundColor: Colors.black,
+                                    padding: const EdgeInsets.symmetric(vertical: 18),
+                                    elevation: 0,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(18),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'ENTRAR',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      letterSpacing: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
+
+                      const Spacer(),
+
+                      // Register Link
+                      FadeInUp(
+                        delay: const Duration(milliseconds: 600),
+                        child: TextButton(
+                          onPressed: () => context.push('/register'),
+                          child: Text.rich(
+                            TextSpan(
+                              text: '¿NO TIENES CUENTA? ',
+                              style: GoogleFonts.outfit(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 1,
+                                color: Colors.white54,
+                              ),
+                              children: [
+                                TextSpan(
+                                  text: 'REGÍSTRATE',
+                                  style: GoogleFonts.outfit(
+                                    fontWeight: FontWeight.w800,
+                                    color: AppConstants.primaryColor,
+                                    letterSpacing: 1,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
+                      ),
 
-                        const SizedBox(height: 20),
-                      ],
-                    ),
+                      const SizedBox(height: 20),
+                    ],
                   ),
                 ),
               ),
-            ],
+            ),
           ),
-        ),
+        ],
       ),
     );
   }
@@ -387,54 +429,49 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() => _isLoading = true);
     
-    final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final success = await authProvider.login(email, password);
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final success = await authProvider.login(email, password);
 
-    if (mounted) {
-      setState(() => _isLoading = false);
-      if (success) {
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.check_circle_rounded, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    '¡Bienvenido de vuelta!',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+      if (mounted) {
+        setState(() => _isLoading = false);
+        if (success) {
+          // Show success message
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle_rounded, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      '¡Bienvenido de vuelta!',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
+              backgroundColor: Colors.green[700],
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              duration: const Duration(seconds: 2),
             ),
-            backgroundColor: Colors.green[700],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            duration: const Duration(seconds: 2),
-          ),
-        );
-        context.go('/dashboard');
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(Icons.error_rounded, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    authProvider.errorMessage ?? 'Credenciales incorrectas',
-                    style: GoogleFonts.outfit(),
-                  ),
-                ),
-              ],
-            ),
-            backgroundColor: Colors.red[700],
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+          );
+          context.go('/dashboard');
+        } else {
+          // Use ErrorHandler to show the message from Provider
+          ErrorHandler.showErrorSnackBar(
+            context, 
+            authProvider.errorMessage ?? 'Credenciales incorrectas',
+            customMessage: authProvider.errorMessage,
+          );
+        }
+      }
+    } catch (e) {
+      ErrorHandler.logError('LoginScreen._handleLogin', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al iniciar sesión');
       }
     }
   }

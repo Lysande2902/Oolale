@@ -65,7 +65,7 @@ class _RatingsScreenState extends State<RatingsScreen> {
 
       // 4. Obtener datos del perfil (rating_promedio, total_calificaciones)
       final perfilResponse = await _supabase
-          .from('profiles')
+          .from('perfiles')
           .select('nombre_artistico, foto_perfil, rating_promedio, total_calificaciones, verificado')
           .eq('id', widget.userId)
           .single();

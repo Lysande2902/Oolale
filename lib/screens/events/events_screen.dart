@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:go_router/go_router.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import '../../models/event.dart';
 import 'create_event_screen.dart';
 
@@ -22,20 +23,12 @@ class _EventsScreenState extends State<EventsScreen> {
   final _scrollController = ScrollController();
   
   List<Evento> _allEvents = [];
-  List<Evento> _todayEvents = [];
-  List<Evento> _thisWeekEvents = [];
-  List<Evento> _thisMonthEvents = [];
-  List<Evento> _upcomingEvents = [];
-  List<Evento> _pastEvents = [];
-  
   bool _isLoading = true;
-  bool _showFilters = false;
   String _selectedView = 'upcoming'; // upcoming, past, today, week, month
   String _sortBy = 'date'; // date, proximity, popularity
   
-  // Filtros
+  // Filtros consolidados
   String? _selectedType;
-  String? _selectedCity;
   DateTime? _startDate;
   DateTime? _endDate;
   
@@ -76,19 +69,26 @@ class _EventsScreenState extends State<EventsScreen> {
     try {
       final myId = _supabase.auth.currentUser?.id;
       
-      // Obtener lista de usuarios bloqueados
+      // Obtener lista de usuarios bloqueados (Mutual: mis bloqueados + quienes me bloquearon)
       List<String> blockedIds = [];
       if (myId != null) {
         final blockedUsers = await _supabase
             .from('usuarios_bloqueados')
-            .select('bloqueado_id')
-            .eq('usuario_id', myId)
+            .select('usuario_id, bloqueado_id')
+            .or('usuario_id.eq.$myId,bloqueado_id.eq.$myId')
             .eq('activo', true);
         
-        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+        blockedIds = blockedUsers.map((b) => 
+          b['usuario_id'] == myId ? b['bloqueado_id'].toString() : b['usuario_id'].toString()
+        ).toList();
       }
 
-      var queryBuilder = _supabase.from('gigs').select();
+      var queryBuilder = _supabase.from('eventos').select();
+      
+      // Aplicar filtro de bloqueados a nivel de DB
+      if (blockedIds.isNotEmpty) {
+        queryBuilder = queryBuilder.filter('organizador_id', 'not.in', '(${blockedIds.join(',')})');
+      }
       
       // Búsqueda amplia
       final query = _searchController.text;
@@ -96,17 +96,40 @@ class _EventsScreenState extends State<EventsScreen> {
         queryBuilder = queryBuilder.or(
           'titulo_bolo.ilike.%$query%,'
           'lugar_nombre.ilike.%$query%,'
-          'lugar_ciudad.ilike.%$query%,'
-          'tipo.ilike.%$query%'
+          'lugar_ciudad.ilike.%$query%'
         );
       }
       
-      // Filtros
+      // Filtros por Categoría de Tiempo (DB Level) - Solo si no hay rango manual
+      if (_startDate == null && _endDate == null) {
+        final now = DateTime.now();
+        final today = DateTime(now.year, now.month, now.day).toIso8601String();
+        
+        switch (_selectedView) {
+          case 'today':
+            queryBuilder = queryBuilder.eq('fecha_gig', today);
+            break;
+          case 'week':
+            final nextWeek = now.add(const Duration(days: 7)).toIso8601String();
+            queryBuilder = queryBuilder.gte('fecha_gig', today).lte('fecha_gig', nextWeek);
+            break;
+          case 'month':
+            final nextMonth = DateTime(now.year, now.month + 1, now.day).toIso8601String();
+            queryBuilder = queryBuilder.gte('fecha_gig', today).lte('fecha_gig', nextMonth);
+            break;
+          case 'past':
+            queryBuilder = queryBuilder.lt('fecha_gig', today);
+            break;
+          case 'upcoming':
+          default:
+            queryBuilder = queryBuilder.gte('fecha_gig', today);
+            break;
+        }
+      }
+      
+      // Filtros Avanzados
       if (_selectedType != null) {
         queryBuilder = queryBuilder.eq('tipo', _selectedType!);
-      }
-      if (_selectedCity != null) {
-        queryBuilder = queryBuilder.ilike('lugar_ciudad', '%$_selectedCity%');
       }
       if (_startDate != null) {
         queryBuilder = queryBuilder.gte('fecha_gig', _startDate!.toIso8601String().split('T')[0]);
@@ -129,48 +152,13 @@ class _EventsScreenState extends State<EventsScreen> {
       }
           
       if (mounted) {
-        // Filtrar eventos de usuarios bloqueados
-        final filteredData = (data as List)
-            .where((e) => !blockedIds.contains(e['organizador_id']))
-            .toList();
-
-        final newEvents = filteredData.map((e) => Evento.fromJson(e)).toList();
-        final now = DateTime.now();
-        final today = DateTime(now.year, now.month, now.day);
-        final weekEnd = today.add(const Duration(days: 7));
-        final monthEnd = DateTime(now.year, now.month + 1, now.day);
+        final newEvents = (data as List).map((e) => Evento.fromJson(e)).toList();
         
         if (isLoadMore) {
           _allEvents.addAll(newEvents);
         } else {
           _allEvents = newEvents;
         }
-        
-        // Categorizar eventos
-        _todayEvents = _allEvents.where((e) {
-          final eventDate = DateTime(e.fecha.year, e.fecha.month, e.fecha.day);
-          return eventDate.isAtSameMomentAs(today);
-        }).toList();
-        
-        _thisWeekEvents = _allEvents.where((e) {
-          final eventDate = DateTime(e.fecha.year, e.fecha.month, e.fecha.day);
-          return eventDate.isAfter(today) && eventDate.isBefore(weekEnd);
-        }).toList();
-        
-        _thisMonthEvents = _allEvents.where((e) {
-          final eventDate = DateTime(e.fecha.year, e.fecha.month, e.fecha.day);
-          return eventDate.isAfter(weekEnd) && eventDate.isBefore(monthEnd);
-        }).toList();
-        
-        _upcomingEvents = _allEvents.where((e) => 
-          e.fecha.isAfter(now) || 
-          DateTime(e.fecha.year, e.fecha.month, e.fecha.day).isAtSameMomentAs(today)
-        ).toList();
-        
-        _pastEvents = _allEvents.where((e) {
-          final eventDate = DateTime(e.fecha.year, e.fecha.month, e.fecha.day);
-          return eventDate.isBefore(today);
-        }).toList();
         
         if (newEvents.length < _limit) {
           _hasMore = false;
@@ -193,32 +181,130 @@ class _EventsScreenState extends State<EventsScreen> {
   void _clearFilters() {
     setState(() {
       _selectedType = null;
-      _selectedCity = null;
       _startDate = null;
       _endDate = null;
+      _selectedView = 'upcoming';
     });
     _loadGigs();
   }
 
-  List<Evento> _getCurrentEvents() {
-    switch (_selectedView) {
-      case 'today':
-        return _todayEvents;
-      case 'week':
-        return _thisWeekEvents;
-      case 'month':
-        return _thisMonthEvents;
-      case 'past':
-        return _pastEvents;
-      default:
-        return _upcomingEvents;
-    }
+  Widget _buildSearchBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      child: Container(
+        height: 48,
+        decoration: BoxDecoration(
+          color: Theme.of(context).brightness == Brightness.dark 
+              ? AppConstants.bgDarkTertiary 
+              : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Theme.of(context).brightness == Brightness.dark 
+                ? AppConstants.primaryColor.withOpacity(0.2)
+                : AppConstants.borderLight,
+            width: 1,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            const SizedBox(width: 14),
+            Icon(Icons.search, color: AppConstants.primaryColor, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: TextField(
+                controller: _searchController,
+                onChanged: _performSearch,
+                style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 15),
+                decoration: InputDecoration(
+                  hintText: 'Buscar eventos, lugares, ciudades...',
+                  hintStyle: GoogleFonts.outfit(
+                    color: Theme.of(context).brightness == Brightness.dark 
+                        ? Colors.white38 
+                        : Colors.black45,
+                    fontSize: 14,
+                  ),
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  isDense: true,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                  filled: true,
+                  fillColor: Colors.transparent,
+                ),
+              ),
+            ),
+            if (_searchController.text.isNotEmpty)
+              IconButton(
+                icon: Icon(Icons.clear, color: ThemeColors.iconSecondary(context), size: 18),
+                onPressed: () {
+                  _searchController.clear();
+                  _performSearch('');
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCategoryChips() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 10), // Aumentado el padding superior de 10 a 16
+      child: Row(
+        children: [
+          _buildCategoryChip('Próximos', 'upcoming'),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Hoy', 'today'),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Esta Semana', 'week'),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Este Mes', 'month'),
+          const SizedBox(width: 8),
+          _buildCategoryChip('Pasados', 'past'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCategoryChip(String label, String value) {
+    final isSelected = _selectedView == value;
+    
+    return GestureDetector(
+      onTap: () {
+        setState(() => _selectedView = value);
+        _loadGigs();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isSelected ? AppConstants.primaryColor.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? AppConstants.primaryColor : ThemeColors.divider(context),
+          ),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.outfit(
+            color: isSelected ? AppConstants.primaryColor : ThemeColors.secondaryText(context),
+            fontSize: 13,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final displayEvents = _getCurrentEvents();
-    
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: SafeArea(
@@ -227,13 +313,12 @@ class _EventsScreenState extends State<EventsScreen> {
             _buildHeader(),
             _buildSearchBar(),
             _buildCategoryChips(),
-            if (_showFilters) _buildFilters(),
             Expanded(
               child: _isLoading && _allEvents.isEmpty
                   ? const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
-                  : displayEvents.isEmpty
+                  : _allEvents.isEmpty
                       ? _buildEmptyState()
-                      : _buildEventList(displayEvents),
+                      : _buildEventList(_allEvents),
             ),
           ],
         ),
@@ -245,393 +330,169 @@ class _EventsScreenState extends State<EventsScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Expanded(
+          Text(
+            'Eventos',
+            style: GoogleFonts.outfit(
+              fontSize: 32,
+              fontWeight: FontWeight.bold,
+              color: ThemeColors.primaryText(context),
+            ),
+          ),
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(Icons.tune, color: AppConstants.primaryColor),
+                onPressed: _showFilterOptions,
+              ),
+              IconButton(
+                icon: const Icon(Icons.add_circle_outline, color: AppConstants.primaryColor),
+                onPressed: () async {
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const CreateEventScreen()),
+                  );
+                  if (result == true) _loadGigs();
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showFilterOptions() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) => SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Eventos',
-                  style: GoogleFonts.outfit(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: ThemeColors.primaryText(context),
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Filtros y Orden',
+                      style: GoogleFonts.outfit(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: ThemeColors.primaryText(context),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        _clearFilters();
+                        Navigator.pop(context);
+                      },
+                      child: Text('Limpiar todos', style: GoogleFonts.outfit(color: AppConstants.primaryColor)),
+                    ),
+                  ],
                 ),
-                Text(
-                  _getSubtitle(),
-                  style: GoogleFonts.outfit(
-                    color: ThemeColors.secondaryText(context),
-                    fontSize: 13,
+                const SizedBox(height: 24),
+                
+                // Ordenamiento
+                Text('Ordenar por', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    _buildModalChip(
+                      label: 'Fecha', 
+                      isSelected: _sortBy == 'date',
+                      onTap: () => setModalState(() => _sortBy = 'date'),
+                    ),
+                    _buildModalChip(
+                      label: 'Popularidad', 
+                      isSelected: _sortBy == 'popularity',
+                      onTap: () => setModalState(() => _sortBy = 'popularity'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // Tipo de Evento
+                Text('Tipo de Evento', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    'concierto', 'jam_session', 'festival', 'ensayo', 'clase'
+                  ].map((type) => _buildModalChip(
+                    label: type.replaceAll('_', ' ').toUpperCase(),
+                    isSelected: _selectedType == type,
+                    onTap: () => setModalState(() => _selectedType = _selectedType == type ? null : type),
+                  )).toList(),
+                ),
+                const SizedBox(height: 24),
+
+                // Botón Aplicar
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _loadGigs();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppConstants.primaryColor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: Text(
+                      'Ver Eventos',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.black),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-          Row(
-            children: [
-              IconButton(
-                icon: Icon(
-                  _showFilters ? Icons.filter_alt : Icons.filter_alt_outlined,
-                  color: _showFilters ? AppConstants.primaryColor : ThemeColors.iconSecondary(context),
-                ),
-                onPressed: () => setState(() => _showFilters = !_showFilters),
-              ),
-              IconButton(
-                icon: Icon(
-                  _sortBy == 'date' ? Icons.calendar_today : 
-                  _sortBy == 'proximity' ? Icons.location_on : Icons.trending_up,
-                  color: AppConstants.primaryColor,
-                  size: 20,
-                ),
-                onPressed: _showSortMenu,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _getSubtitle() {
-    switch (_selectedView) {
-      case 'today':
-        return '${_todayEvents.length} eventos hoy';
-      case 'week':
-        return '${_thisWeekEvents.length} esta semana';
-      case 'month':
-        return '${_thisMonthEvents.length} este mes';
-      case 'past':
-        return '${_pastEvents.length} pasados';
-      default:
-        return '${_upcomingEvents.length} próximos';
-    }
-  }
-
-  void _showSortMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Theme.of(context).cardColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Ordenar por',
-              style: GoogleFonts.outfit(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: ThemeColors.primaryText(context),
-              ),
-            ),
-            const SizedBox(height: 20),
-            _buildSortOption('Fecha', 'date', Icons.calendar_today),
-            _buildSortOption('Proximidad', 'proximity', Icons.location_on),
-            _buildSortOption('Popularidad', 'popularity', Icons.trending_up),
-            const SizedBox(height: 10),
-          ],
         ),
       ),
     );
   }
 
-  Widget _buildSortOption(String label, String value, IconData icon) {
-    final isSelected = _sortBy == value;
-    return ListTile(
-      leading: Icon(icon, color: isSelected ? AppConstants.primaryColor : ThemeColors.iconSecondary(context)),
-      title: Text(
-        label,
-        style: GoogleFonts.outfit(
-          color: isSelected ? AppConstants.primaryColor : ThemeColors.primaryText(context),
+  Widget _buildModalChip({required String label, required bool isSelected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Chip(
+        label: Text(label, style: GoogleFonts.outfit(fontSize: 12)),
+        backgroundColor: isSelected ? AppConstants.primaryColor : Colors.transparent,
+        labelStyle: TextStyle(
+          color: isSelected ? Colors.black : ThemeColors.secondaryText(context),
           fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
         ),
-      ),
-      trailing: isSelected ? Icon(Icons.check, color: AppConstants.primaryColor) : null,
-      onTap: () {
-        setState(() => _sortBy = value);
-        Navigator.pop(context);
-        _loadGigs();
-      },
-    );
-  }
-
-  Widget _buildSearchBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      child: Container(
-        height: 48,
-        decoration: BoxDecoration(
-          color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: AppConstants.primaryColor.withOpacity(0.1)),
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(14),
-          child: Row(
-            children: [
-              const SizedBox(width: 14),
-              Icon(Icons.search, color: AppConstants.primaryColor, size: 20),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  onChanged: _performSearch,
-                  style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 15),
-                  decoration: InputDecoration(
-                    hintText: 'Buscar eventos, lugares, ciudades...',
-                    hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 14),
-                    border: InputBorder.none,
-                    isDense: true,
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
-              ),
-              if (_searchController.text.isNotEmpty)
-                IconButton(
-                  icon: Icon(Icons.clear, color: ThemeColors.iconSecondary(context), size: 18),
-                  onPressed: () {
-                    _searchController.clear();
-                    _performSearch('');
-                  },
-                ),
-            ],
-          ),
-        ),
+        side: BorderSide(color: isSelected ? AppConstants.primaryColor : ThemeColors.divider(context)),
       ),
     );
   }
 
-  Widget _buildCategoryChips() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      child: Row(
-        children: [
-          if (_todayEvents.isNotEmpty)
-            _buildCategoryChip('Hoy', 'today', _todayEvents.length),
-          if (_todayEvents.isNotEmpty) const SizedBox(width: 8),
-          _buildCategoryChip('Esta Semana', 'week', _thisWeekEvents.length),
-          const SizedBox(width: 8),
-          _buildCategoryChip('Este Mes', 'month', _thisMonthEvents.length),
-          const SizedBox(width: 8),
-          _buildCategoryChip('Próximos', 'upcoming', _upcomingEvents.length),
-          const SizedBox(width: 8),
-          _buildCategoryChip('Pasados', 'past', _pastEvents.length),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const CreateEventScreen()),
-              );
-              if (result == true) _loadGigs();
-            },
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppConstants.primaryColor,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.add, color: Colors.black, size: 24),
-            ),
-          ),
-        ],
+  Widget _buildDateButton({required String label, required VoidCallback onTap}) {
+    return OutlinedButton(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        side: BorderSide(color: ThemeColors.divider(context)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
-    );
-  }
-
-  Widget _buildCategoryChip(String label, String value, int count) {
-    final isSelected = _selectedView == value;
-    final isToday = value == 'today';
-    
-    return GestureDetector(
-      onTap: () => setState(() => _selectedView = value),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: isSelected 
-            ? (isToday ? Colors.red.withOpacity(0.2) : AppConstants.primaryColor.withOpacity(0.2))
-            : Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected 
-              ? (isToday ? Colors.red : AppConstants.primaryColor)
-              : Colors.grey.withOpacity(0.2),
-          ),
-        ),
-        child: Row(
-          children: [
-            if (isToday && isSelected)
-              Icon(Icons.today, color: Colors.red, size: 16),
-            if (isToday && isSelected) const SizedBox(width: 6),
-            Text(
-              '$label ($count)',
-              style: GoogleFonts.outfit(
-                color: isSelected 
-                  ? (isToday ? Colors.red : AppConstants.primaryColor)
-                  : Colors.grey[400],
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilters() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'Filtros Avanzados',
-                style: GoogleFonts.outfit(
-                  color: ThemeColors.primaryText(context),
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              TextButton(
-                onPressed: _clearFilters,
-                child: Text(
-                  'Limpiar',
-                  style: GoogleFonts.outfit(
-                    color: AppConstants.primaryColor,
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Tipo de Evento',
-            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _buildFilterChip('Concierto', 'concierto'),
-              _buildFilterChip('Jam Session', 'jam_session'),
-              _buildFilterChip('Festival', 'festival'),
-              _buildFilterChip('Ensayo', 'ensayo'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Rango de Fechas',
-            style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context), fontSize: 12),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: _startDate ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (date != null) {
-                      setState(() => _startDate = date);
-                      _loadGigs();
-                    }
-                  },
-                  icon: Icon(Icons.calendar_today, size: 16, color: ThemeColors.secondaryText(context)),
-                  label: Text(
-                    _startDate != null 
-                      ? DateFormat('dd/MM/yy').format(_startDate!)
-                      : 'Desde',
-                    style: GoogleFonts.outfit(fontSize: 12),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: ThemeColors.primaryText(context),
-                    side: BorderSide(color: ThemeColors.divider(context)),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: () async {
-                    final date = await showDatePicker(
-                      context: context,
-                      initialDate: _endDate ?? DateTime.now(),
-                      firstDate: DateTime(2020),
-                      lastDate: DateTime(2030),
-                    );
-                    if (date != null) {
-                      setState(() => _endDate = date);
-                      _loadGigs();
-                    }
-                  },
-                  icon: Icon(Icons.calendar_today, size: 16, color: ThemeColors.secondaryText(context)),
-                  label: Text(
-                    _endDate != null 
-                      ? DateFormat('dd/MM/yy').format(_endDate!)
-                      : 'Hasta',
-                    style: GoogleFonts.outfit(fontSize: 12),
-                  ),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: ThemeColors.primaryText(context),
-                    side: BorderSide(color: ThemeColors.divider(context)),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(String label, String value) {
-    final isSelected = _selectedType == value;
-    return GestureDetector(
-      onTap: () {
-        setState(() => _selectedType = isSelected ? null : value);
-        _loadGigs();
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppConstants.primaryColor.withOpacity(0.2) : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-            color: isSelected ? AppConstants.primaryColor : Colors.grey.withOpacity(0.3),
-          ),
-        ),
-        child: Text(
-          label,
-          style: GoogleFonts.outfit(
-            color: isSelected ? AppConstants.primaryColor : ThemeColors.secondaryText(context),
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
+      child: Text(label, style: GoogleFonts.outfit(color: ThemeColors.primaryText(context))),
     );
   }
 
@@ -838,12 +699,12 @@ class _EventCard extends StatelessWidget {
                       Text(
                         day,
                         style: GoogleFonts.outfit(
-                          fontSize: 28,
+                          fontSize: 30,
                           fontWeight: FontWeight.bold,
                           color: isToday
                             ? Colors.red
                             : isPast 
-                              ? Colors.grey[500] 
+                              ? Colors.grey[700] 
                               : AppConstants.primaryColor,
                           height: 1,
                         ),
@@ -852,13 +713,13 @@ class _EventCard extends StatelessWidget {
                       Text(
                         month,
                         style: GoogleFonts.outfit(
-                          fontSize: 12,
+                          fontSize: 14,
                           fontWeight: FontWeight.bold,
                           color: isToday
                             ? Colors.red
                             : isPast 
-                              ? Colors.grey[600] 
-                              : AppConstants.primaryColor,
+                              ? Colors.grey[800] 
+                              : ThemeColors.primaryText(context).withOpacity(0.9),
                         ),
                       ),
                     ],
@@ -868,7 +729,7 @@ class _EventCard extends StatelessWidget {
               // Info
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 10),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -879,7 +740,7 @@ class _EventCard extends StatelessWidget {
                             child: Text(
                               event.titulo,
                               style: GoogleFonts.outfit(
-                                fontSize: 16,
+                                fontSize: 18,
                                 fontWeight: FontWeight.bold,
                                 color: ThemeColors.primaryText(context),
                               ),
@@ -890,14 +751,14 @@ class _EventCard extends StatelessWidget {
                           const SizedBox(width: 8),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: isToday
-                            ? Colors.red.withOpacity(0.2)
+                            ? Colors.red.withOpacity(0.15)
                             : isPast 
-                              ? Colors.grey.withOpacity(0.2)
+                              ? Colors.grey.withOpacity(0.15)
                               : AppConstants.primaryColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
@@ -907,9 +768,9 @@ class _EventCard extends StatelessWidget {
                             color: isToday
                               ? Colors.red
                               : isPast 
-                                ? Colors.grey[500] 
+                                ? Colors.grey[700] 
                                 : AppConstants.primaryColor,
-                            fontSize: 9,
+                            fontSize: 10,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
@@ -922,17 +783,18 @@ class _EventCard extends StatelessWidget {
                             color: isToday
                               ? Colors.red
                               : isPast 
-                                ? Colors.grey[600] 
+                                ? Colors.grey[700] 
                                 : AppConstants.primaryColor, 
                             size: 14,
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
                           Expanded(
                             child: Text(
                               event.ubicacion,
                               style: GoogleFonts.outfit(
-                                color: ThemeColors.secondaryText(context),
+                                color: ThemeColors.primaryText(context).withOpacity(0.9),
                                 fontSize: 13,
+                                fontWeight: FontWeight.w500,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -940,16 +802,20 @@ class _EventCard extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 2),
                       Row(
                         children: [
-                          Icon(Icons.access_time, color: ThemeColors.iconSecondary(context), size: 14),
-                          const SizedBox(width: 4),
+                          Icon(
+                            Icons.access_time, 
+                            color: ThemeColors.primaryText(context).withOpacity(0.7), 
+                            size: 14
+                          ),
+                          const SizedBox(width: 6),
                           Text(
                             event.hora,
                             style: GoogleFonts.outfit(
-                              color: ThemeColors.hintText(context),
-                              fontSize: 12,
+                              color: ThemeColors.primaryText(context).withOpacity(0.8),
+                              fontSize: 13,
                             ),
                           ),
                         ],

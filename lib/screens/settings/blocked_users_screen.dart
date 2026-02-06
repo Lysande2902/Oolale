@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 import '../profile/public_profile_screen.dart';
+import '../../utils/error_handler.dart';
 
 class BlockedUsersScreen extends StatefulWidget {
   const BlockedUsersScreen({super.key});
@@ -28,12 +29,14 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
     final myId = _supabase.auth.currentUser?.id;
     if (myId == null) return;
 
+    setState(() => _isLoading = true);
+
     try {
       debugPrint('🔍 Cargando usuarios bloqueados para: $myId');
       
       final data = await _supabase
           .from('usuarios_bloqueados')
-          .select('*, bloqueado:profiles!usuarios_bloqueados_bloqueado_id_fkey(id, nombre_artistico, foto_perfil, rol_principal, ubicacion)')
+          .select('*, bloqueado:perfiles!usuarios_bloqueados_bloqueado_id_fkey(id, nombre_artistico, foto_perfil, rol_principal, ubicacion)')
           .eq('usuario_id', myId)
           .eq('activo', true)
           .order('created_at', ascending: false);
@@ -47,12 +50,20 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         });
       }
     } catch (e) {
-      debugPrint('❌ Error cargando usuarios bloqueados: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('BlockedUsersScreen._loadBlockedUsers', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context, 
+          e, 
+          title: 'Error al cargar bloqueados',
+          onRetry: _loadBlockedUsers
+        );
+      }
     }
   }
 
-  Future<void> _unblockUser(String blockId, String userId, String userName) async {
+  Future<void> _unblockUser(dynamic blockId, String userId, String userName) async {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -113,13 +124,12 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
         _loadBlockedUsers(); // Recargar lista
       }
     } catch (e) {
-      debugPrint('❌ Error desbloqueando usuario: $e');
+      ErrorHandler.logError('BlockedUsersScreen._unblockUser', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al desbloquear usuario', style: GoogleFonts.outfit()),
-            backgroundColor: Colors.red[700],
-          ),
+        ErrorHandler.showErrorSnackBar(
+          context, 
+          e, 
+          customMessage: 'No se pudo desbloquear al usuario'
         );
       }
     }
@@ -278,7 +288,7 @@ class _BlockedUsersScreenState extends State<BlockedUsersScreen> {
           IconButton(
             onPressed: () => _unblockUser(
               block['id'],
-              user['id'],
+              user['id'].toString(),
               user['nombre_artistico'] ?? 'Artista',
             ),
             icon: const Icon(Icons.block, color: Colors.red),

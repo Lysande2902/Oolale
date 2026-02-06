@@ -8,6 +8,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../providers/auth_provider.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import 'edit_profile_screen.dart';
 import 'profile_detail_lists.dart';
 import '../messages/chat_screen.dart';
@@ -51,7 +52,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
 
     try {
       final profile = await _supabase
-          .from('profiles')
+          .from('perfiles')
           .select()
           .eq('id', widget.userId)
           .maybeSingle();
@@ -80,17 +81,17 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
 
       // Cargar géneros musicales
       final genresData = await _supabase
-          .from('profile_genres')
+          .from('generos_perfil')
           .select('genre')
           .eq('profile_id', widget.userId);
 
       final eventosData = await _supabase
-          .from('gig_lineup')
+          .from('participantes_evento')
           .select()
-          .eq('perfil_id', widget.userId);
+          .eq('user_id', widget.userId);
 
       final seguidoresData = await _supabase
-          .from('connections')
+          .from('conexiones')
           .select()
           .eq('conectado_id', widget.userId)
           .eq('estatus', 'accepted');
@@ -106,9 +107,10 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
 
       if (myId != null && !_isMyProfile) {
         final connectionData = await _supabase
-            .from('connections')
+            .from('conexiones')
             .select()
             .or('and(usuario_id.eq.$myId,conectado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},conectado_id.eq.$myId)')
+            .limit(1)
             .maybeSingle();
         
         if (connectionData != null) {
@@ -122,18 +124,18 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
         // También verificar si trabajaron juntos en eventos
         if (!hasInteracted) {
           final myGigsData = await _supabase
-              .from('gig_lineup')
-              .select('gig_id')
-              .eq('perfil_id', myId);
+              .from('participantes_evento')
+              .select('event_id')
+              .eq('user_id', myId);
 
           if (myGigsData.isNotEmpty) {
-            final gigIds = myGigsData.map((g) => g['gig_id']).toList();
+            final gigIds = myGigsData.map((g) => g['event_id']).toList();
 
             final sharedGigs = await _supabase
-                .from('gig_lineup')
-                .select('gig_id')
-                .eq('perfil_id', widget.userId)
-                .inFilter('gig_id', gigIds);
+                .from('participantes_evento')
+                .select('event_id')
+                .eq('user_id', widget.userId)
+                .inFilter('event_id', gigIds);
 
             hasInteracted = sharedGigs.isNotEmpty;
           }
@@ -145,6 +147,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
             .eq('usuario_id', myId)
             .eq('bloqueado_id', widget.userId)
             .eq('activo', true)
+            .limit(1)
             .maybeSingle();
         
         isBlocked = blockData != null;
@@ -175,8 +178,16 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
         debugPrint('   - hasInteracted: $hasInteracted');
       }
     } catch (e) {
-      debugPrint('❌ LOAD PROFILE ERROR: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('UnifiedProfileScreen._loadProfile', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando perfil',
+          onRetry: _loadProfile,
+        );
+      }
     }
   }
 
@@ -215,18 +226,20 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
     }
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark 
+          ? Theme.of(context).scaffoldBackgroundColor 
+          : Colors.white,
       body: SingleChildScrollView(
         child: Column(
           children: [
             _buildHeader(),
             Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildStatsRow(),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 10),
                   _buildActionButtons(),
                   const SizedBox(height: 30),
                   if (_profileData?['instrumento_principal'] != null) ...[
@@ -234,49 +247,24 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
                     const SizedBox(height: 30),
                   ],
                   _buildSectionTitle('Bio'),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildBioCard(),
                   const SizedBox(height: 30),
                   
-                  // Géneros musicales
                   if (_genres.isNotEmpty) ...[
                     _buildSectionTitle('Géneros Musicales'),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     _buildGenresCard(),
-                    const SizedBox(height: 30),
-                  ],
-                  
-                  // Años de experiencia y tarifa
-                  if (_profileData?['years_experience'] != null && _profileData!['years_experience'] > 0 ||
-                      _profileData?['base_rate'] != null && _profileData!['base_rate'] > 0) ...[
-                    _buildExperienceAndRateRow(),
-                    const SizedBox(height: 30),
-                  ],
-                  
-                  // Disponibilidad
-                  if (_profileData?['availability'] != null && 
-                      _profileData!['availability'].toString() != '{}') ...[
-                    _buildSectionTitle('Disponibilidad'),
-                    const SizedBox(height: 10),
-                    _buildAvailabilityCard(),
-                    const SizedBox(height: 30),
-                  ],
-                  
-                  // Redes sociales
-                  if (_profileData?['social_links'] != null && 
-                      _profileData!['social_links'].toString() != '{}') ...[
-                    _buildSectionTitle('Redes Sociales'),
-                    const SizedBox(height: 10),
-                    _buildSocialLinksCard(),
                     const SizedBox(height: 30),
                   ],
                   
                   if (_isMyProfile) ...[
                     _buildPortfolioButton(),
-                    const SizedBox(height: 30),
                   ],
+                  
+                  const SizedBox(height: 20),
                   _buildSectionTitle('Mi Equipo'),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 12),
                   _buildGearSection(),
                   const SizedBox(height: 100),
                 ],
@@ -294,16 +282,23 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
     debugPrint('   - foto_perfil: ${_profileData?['foto_perfil']}');
     debugPrint('   - ubicacion: ${_profileData?['ubicacion']}');
     
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       height: 300,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [
-            AppConstants.primaryColor.withOpacity(0.2),
-            Colors.black,
-          ],
+          colors: isDark
+              ? [
+                  AppConstants.primaryColor.withOpacity(0.15),
+                  Theme.of(context).scaffoldBackgroundColor,
+                ]
+              : [
+                  AppConstants.primaryColor.withOpacity(0.05),
+                  Colors.white,
+                ],
         ),
       ),
       child: SafeArea(
@@ -311,20 +306,32 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
           children: [
             if (!_isMyProfile)
               Positioned(
-                top: 10,
-                left: 10,
-                child: IconButton(
-                  icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
-                  onPressed: () => Navigator.pop(context),
+                top: 15,
+                left: 15,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
+                    onPressed: () => Navigator.pop(context),
+                  ),
                 ),
               ),
             if (_isMyProfile)
               Positioned(
-                top: 10,
-                right: 10,
-                child: IconButton(
-                  icon: const Icon(Icons.settings_outlined, color: Colors.white70),
-                  onPressed: () => context.push('/settings'),
+                top: 15,
+                right: 15,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    icon: Icon(Icons.settings_outlined, color: ThemeColors.icon(context)),
+                    onPressed: () => context.push('/settings'),
+                  ),
                 ),
               ),
             Center(
@@ -367,6 +374,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
                               style: GoogleFonts.outfit(
                                 fontSize: 28,
                                 fontWeight: FontWeight.bold,
+                                color: ThemeColors.primaryText(context),
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -499,61 +507,92 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
   }
 
   Widget _buildStatsRow() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceAround,
-      children: [
-        _buildStat(
-          _eventosCount.toString(), 'Eventos',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: widget.userId))),
-        ),
-        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
-        _buildStat(
-          _seguidoresCount.toString(), 'Seguidores',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: widget.userId))),
-        ),
-        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
-        _buildStat(
-          _musicCount.toString(), 'Equipo',
-          () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: widget.userId))),
-        ),
-        Container(width: 1, height: 40, color: ThemeColors.divider(context)),
-        _buildStat(
-          _ratingsCount.toString(), 'Ratings',
-          () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ViewRatingsScreen(
-                userId: widget.userId,
-                userName: _profileData!['nombre_artistico'] ?? 'Artista',
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 10),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: ThemeColors.divider(context).withOpacity(0.1)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.4 : 0.06),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildStat(
+            _eventosCount.toString(), 'Eventos',
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileEventsScreen(userId: widget.userId))),
+          ),
+          _buildStatDivider(),
+          _buildStat(
+            _seguidoresCount.toString(), 'Seguidores',
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileFollowersScreen(userId: widget.userId))),
+          ),
+          _buildStatDivider(),
+          _buildStat(
+            _musicCount.toString(), 'Equipo',
+            () => Navigator.push(context, MaterialPageRoute(builder: (_) => ProfileGearScreen(userId: widget.userId))),
+          ),
+          _buildStatDivider(),
+          _buildStat(
+            _ratingsCount.toString(), 'Ratings',
+            () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => ViewRatingsScreen(
+                  userId: widget.userId,
+                  userName: _profileData!['nombre_artistico'] ?? 'Artista',
+                ),
               ),
             ),
           ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatDivider() {
+    return Container(
+      height: 30,
+      width: 1,
+      color: ThemeColors.divider(context).withOpacity(0.08),
     );
   }
 
   Widget _buildStat(String value, String label, VoidCallback onTap) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
+    return Expanded(
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Text(
               value,
               style: GoogleFonts.outfit(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                color: ThemeColors.primaryText(context),
+                letterSpacing: -0.5,
               ),
             ),
+            const SizedBox(height: 4),
             Text(
               label,
               style: GoogleFonts.outfit(
-                color: ThemeColors.hintText(context),
-                fontSize: 12,
+                color: ThemeColors.secondaryText(context).withOpacity(0.7),
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.2,
               ),
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -579,8 +618,6 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
               icon: const Icon(Icons.edit_outlined),
               label: Text('Editar Perfil', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppConstants.primaryColor,
-                foregroundColor: Colors.black,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
@@ -672,8 +709,8 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
                 icon: const Icon(Icons.collections_outlined, size: 18),
                 label: const Text('Galería', style: TextStyle(fontSize: 13)),
                 style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  side: const BorderSide(color: AppConstants.bgDarkAlt),
+                  foregroundColor: ThemeColors.primaryText(context),
+                  side: BorderSide(color: ThemeColors.divider(context)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -796,7 +833,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
         return;
       }
 
-      await _supabase.from('connections').insert({
+      await _supabase.from('conexiones').insert({
         'usuario_id': myId,
         'conectado_id': widget.userId,
         'estatus': 'pending',
@@ -836,16 +873,15 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppConstants.cardColor,
-        title: Text('Bloquear usuario', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Bloquear usuario', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         content: Text(
           '¿Estás seguro que quieres bloquear a ${_profileData!['nombre_artistico']}? No podrás ver su contenido ni recibir mensajes.',
-          style: GoogleFonts.outfit(color: Colors.white70),
+          style: GoogleFonts.outfit(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar', style: GoogleFonts.outfit(color: Colors.white54)),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
@@ -868,23 +904,18 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppConstants.cardColor,
-        title: Text('Desbloquear usuario', style: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold)),
+        title: Text('Desbloquear usuario', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         content: Text(
           '¿Estás seguro que quieres desbloquear a ${_profileData!['nombre_artistico']}? Podrás ver su contenido y recibir mensajes nuevamente.',
-          style: GoogleFonts.outfit(color: Colors.white70),
+          style: GoogleFonts.outfit(),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancelar', style: GoogleFonts.outfit(color: Colors.white54)),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppConstants.primaryColor,
-              foregroundColor: Colors.black,
-            ),
             child: Text('Desbloquear', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
           ),
         ],
@@ -909,7 +940,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
       });
 
       await _supabase
-          .from('connections')
+          .from('conexiones')
           .delete()
           .or('and(usuario_id.eq.$myId,conectado_id.eq.${widget.userId}),and(usuario_id.eq.${widget.userId},conectado_id.eq.$myId)');
 
@@ -992,13 +1023,27 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: GoogleFonts.outfit(
-        color: ThemeColors.primaryText(context),
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-      ),
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 24,
+          decoration: BoxDecoration(
+            color: AppConstants.primaryColor,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          title,
+          style: GoogleFonts.outfit(
+            color: ThemeColors.primaryText(context),
+            fontSize: 22,
+            fontWeight: FontWeight.w800,
+            letterSpacing: -0.5,
+          ),
+        ),
+      ],
     );
   }
 
@@ -1080,8 +1125,15 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: ThemeColors.divider(context)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Text(
         bioText,
@@ -1097,28 +1149,35 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
   Widget _buildGenresCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(color: ThemeColors.divider(context)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
+        spacing: 10,
+        runSpacing: 10,
         children: _genres.map((genre) {
           return Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: AppConstants.primaryColor.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: AppConstants.primaryColor),
+              color: AppConstants.primaryColor.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.1),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
             ),
             child: Text(
               genre,
               style: GoogleFonts.outfit(
                 color: AppConstants.primaryColor,
-                fontSize: 12,
+                fontSize: 13,
                 fontWeight: FontWeight.bold,
               ),
             ),
@@ -1151,18 +1210,33 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
       runSpacing: 10,
       children: _instrumentos.map((i) {
         return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: ThemeColors.divider(context)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-          child: Text(
-            i['gear_catalog']['nombre'],
-            style: GoogleFonts.outfit(
-              color: ThemeColors.primaryText(context),
-              fontSize: 13,
-            ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_outline, color: AppConstants.primaryColor, size: 14),
+              const SizedBox(width: 8),
+              Text(
+                i['gear_catalog']['nombre'],
+                style: GoogleFonts.outfit(
+                  color: ThemeColors.primaryText(context),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
         );
       }).toList(),

@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import '../profile/public_profile_screen.dart';
 
 class ConnectionRequestsScreen extends StatefulWidget {
@@ -31,8 +32,8 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
     try {
       // Obtener solicitudes pendientes donde YO soy el receptor
       final data = await _supabase
-          .from('connections')
-          .select('*, profiles!connections_usuario_id_fkey(id, nombre_artistico, foto_perfil, rol_principal, ubicacion, rating_promedio)')
+          .from('conexiones')
+          .select('*, perfiles!conexiones_usuario_id_fkey(id, nombre_artistico, foto_perfil, rol_principal, ubicacion, rating_promedio)')
           .eq('conectado_id', myId)
           .eq('estatus', 'pending')
           .order('created_at', ascending: false);
@@ -44,8 +45,16 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error cargando solicitudes: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('ConnectionRequestsScreen._loadPendingRequests', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando solicitudes',
+          onRetry: _loadPendingRequests,
+        );
+      }
     }
   }
 
@@ -56,20 +65,20 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
     try {
       // Actualizar estatus de la conexión
       await _supabase
-          .from('connections')
+          .from('conexiones')
           .update({'estatus': 'accepted', 'updated_at': DateTime.now().toIso8601String()})
           .eq('id', connectionId);
 
       // Obtener mi nombre artístico para la notificación
       try {
         final myProfile = await _supabase
-            .from('profiles')
+            .from('perfiles')
             .select('nombre_artistico')
             .eq('id', myId)
             .single();
 
         // Crear notificación de conexión aceptada
-        await _supabase.from('notifications').insert({
+        await _supabase.from('notificaciones').insert({
           'user_id': userId, // El que envió la solicitud
           'tipo': 'connection_accepted',
           'titulo': 'Solicitud aceptada',
@@ -115,7 +124,7 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
   Future<void> _rejectRequest(String connectionId) async {
     try {
       await _supabase
-          .from('connections')
+          .from('conexiones')
           .update({'estatus': 'rejected', 'updated_at': DateTime.now().toIso8601String()})
           .eq('id', connectionId);
 
@@ -166,7 +175,7 @@ class _ConnectionRequestsScreenState extends State<ConnectionRequestsScreen> {
                     itemCount: _pendingRequests.length,
                     itemBuilder: (context, index) {
                       final request = _pendingRequests[index];
-                      final profile = request['profiles'];
+                      final profile = request['perfiles'];
                       return _buildRequestCard(request, profile);
                     },
                   ),

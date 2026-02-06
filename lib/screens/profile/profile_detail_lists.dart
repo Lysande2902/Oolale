@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
 import '../../config/constants.dart';
+import '../../utils/error_handler.dart';
 import 'public_profile_screen.dart';
 
 // -----------------------------------------------------------------------------
@@ -60,7 +61,7 @@ class _ProfileEventsScreenState extends State<ProfileEventsScreen> {
       final to = from + _limit - 1;
 
       final response = await _supabase
-          .from('gigs')
+          .from('eventos')
           .select()
           .eq('organizador_id', widget.userId)
           .order('fecha_gig', ascending: false)
@@ -78,8 +79,16 @@ class _ProfileEventsScreenState extends State<ProfileEventsScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error ProfileEvents: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('ProfileEventsScreen._loadItems', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando eventos',
+          onRetry: _loadItems,
+        );
+      }
     }
   }
 
@@ -187,10 +196,10 @@ class _ProfileFollowersScreenState extends State<ProfileFollowersScreen> {
       final from = _page * _limit;
       final to = from + _limit - 1;
 
-      // Unir con profiles para obtener info del seguidor
+      // Unir con perfiles para obtener info del seguidor
       final response = await _supabase
-          .from('connections')
-          .select('*, profiles:usuario_id(*)') 
+          .from('conexiones')
+          .select('*, perfiles:usuario_id(*)') 
           .eq('conectado_id', widget.userId)
           .eq('estatus', 'accepted')
           .range(from, to);
@@ -207,8 +216,16 @@ class _ProfileFollowersScreenState extends State<ProfileFollowersScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error ProfileFollowers: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('ProfileFollowersScreen._loadItems', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando seguidores',
+          onRetry: _loadItems,
+        );
+      }
     }
   }
 
@@ -236,7 +253,7 @@ class _ProfileFollowersScreenState extends State<ProfileFollowersScreen> {
                       ));
                     }
                     final item = _items[index];
-                    final profile = item['profiles']; // Relación expandida
+                    final profile = item['perfiles']; // Relación expandida
                     if (profile == null) return const SizedBox.shrink();
 
                     return ListTile(
@@ -327,8 +344,16 @@ class _ProfileGearScreenState extends State<ProfileGearScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error ProfileGear: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('ProfileGearScreen._loadItems', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando equipo',
+          onRetry: _loadItems,
+        );
+      }
     }
   }
 

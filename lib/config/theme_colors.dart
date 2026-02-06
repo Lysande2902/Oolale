@@ -1,33 +1,34 @@
 import 'package:flutter/material.dart';
+import 'constants.dart';
 
 /// Helper class para obtener colores que se adaptan al tema actual
 class ThemeColors {
-  /// Texto principal (blanco en oscuro, negro en claro)
+  /// Texto principal (Premium Soft White en oscuro, Deep Onyx en claro)
   static Color primaryText(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.white
-        : const Color(0xFF1A1A1A);
+        ? AppConstants.textPrimary
+        : AppConstants.textLightPrimary;
   }
 
-  /// Texto secundario (gris claro en oscuro, gris oscuro en claro)
+  /// Texto secundario (Muted Silver en oscuro, Iron Gray en claro)
   static Color secondaryText(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.grey[400]!
-        : const Color(0xFF666666);
+        ? AppConstants.textSecondary
+        : AppConstants.textLightSecondary;
   }
 
-  /// Texto terciario/hint (gris muy claro en oscuro, gris medio en claro)
+  /// Texto terciario/hint
   static Color hintText(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.grey[600]!
-        : const Color(0xFF999999);
+        ? AppConstants.textMuted
+        : AppConstants.textLightSecondary.withOpacity(0.5);
   }
 
   /// Texto deshabilitado
   static Color disabledText(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.grey[700]!
-        : const Color(0xFFCCCCCC);
+        ? AppConstants.bgDarkTertiary
+        : AppConstants.bgLightSecondary;
   }
 
   /// Fondo de tarjetas
@@ -40,45 +41,43 @@ class ThemeColors {
     return Theme.of(context).scaffoldBackgroundColor;
   }
 
-  /// Color de divisores/bordes
+  /// Color de divisores/bordes (Glassmorphism sutil en oscuro)
   static Color divider(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.white.withOpacity(0.05)
-        : const Color(0xFFE0E0E0);
+        ? AppConstants.borderColor
+        : AppConstants.borderLight; // Sólido, sin opacidad
   }
 
   /// Fondo de inputs
   static Color inputBackground(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFF1E1E1E)
-        : Colors.white;
+        ? AppConstants.bgDarkSecondary
+        : AppConstants.bgLightSecondary;
   }
 
   /// Iconos principales
   static Color icon(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.white
-        : const Color(0xFF1A1A1A);
+        ? AppConstants.textPrimary
+        : AppConstants.textLightPrimary;
   }
 
   /// Iconos secundarios
   static Color iconSecondary(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? Colors.grey[600]!
-        : const Color(0xFF999999);
+        ? AppConstants.textSecondary
+        : AppConstants.textLightSecondary;
   }
 
   /// Overlay oscuro (para imágenes, etc)
   static Color overlay(BuildContext context) {
-    return Theme.of(context).brightness == Brightness.dark
-        ? Colors.black.withOpacity(0.5)
-        : Colors.black.withOpacity(0.3);
+    return Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.6 : 0.4);
   }
 
-  /// Fondo alternativo (para secciones destacadas)
+  /// Fondo alternativo
   static Color alternativeBackground(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
-        ? const Color(0xFF1A1A1A)
-        : const Color(0xFFF0F0F0);
+        ? AppConstants.bgDarkPanel
+        : AppConstants.bgLightSecondary;
   }
 }

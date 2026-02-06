@@ -4,6 +4,7 @@ import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import '../../utils/error_handler.dart';
 import 'connection_requests_screen.dart';
 
 class ConnectionsScreen extends StatefulWidget {
@@ -48,16 +49,16 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
 
     try {
       final activeData = await _supabase
-          .from('connections')
-          .select('*, target:profiles!connections_conectado_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .from('conexiones')
+          .select('*, target:perfiles!conexiones_conectado_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
           .eq('usuario_id', myId)
           .eq('estatus', 'accepted')
           .order('id', ascending: false)
           .range(0, _pageSize - 1);
 
       final pendingData = await _supabase
-          .from('connections')
-          .select('*, requester:profiles!connections_usuario_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .from('conexiones')
+          .select('*, requester:perfiles!conexiones_usuario_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
           .eq('conectado_id', myId)
           .eq('estatus', 'pending')
           .order('id', ascending: false)
@@ -65,7 +66,7 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
 
       // Contar solicitudes pendientes en la tabla connections
       final pendingRequestsCount = await _supabase
-          .from('connections')
+          .from('conexiones')
           .select('id')
           .eq('conectado_id', myId)
           .eq('estatus', 'pending');
@@ -83,8 +84,16 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         });
       }
     } catch (e) {
-      debugPrint('Error loading connections: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('ConnectionsScreen._loadConnections', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando conexiones',
+          onRetry: _loadConnections,
+        );
+      }
     }
   }
   
@@ -98,8 +107,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
       final start = nextPage * _pageSize;
       final end = start + _pageSize - 1;
       final data = await _supabase
-          .from('connections')
-          .select('*, target:profiles!connections_conectado_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .from('conexiones')
+          .select('*, target:perfiles!conexiones_conectado_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
           .eq('usuario_id', myId)
           .eq('estatus', 'accepted')
           .order('id', ascending: false)
@@ -126,8 +135,8 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
       final start = nextPage * _pageSize;
       final end = start + _pageSize - 1;
       final data = await _supabase
-          .from('connections')
-          .select('*, requester:profiles!connections_usuario_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
+          .from('conexiones')
+          .select('*, requester:perfiles!conexiones_usuario_id_fkey(id, nombre_artistico, foto_perfil, instrumento_principal)')
           .eq('conectado_id', myId)
           .eq('estatus', 'pending')
           .order('id', ascending: false)
@@ -148,12 +157,12 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
     try {
       if (action == 'accept') {
         await _supabase
-            .from('connections')
+            .from('conexiones')
             .update({'estatus': 'accepted'})
             .eq('id', crewId);
       } else {
         await _supabase
-            .from('connections')
+            .from('conexiones')
             .delete()
             .eq('id', crewId);
       }
@@ -168,17 +177,16 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         _loadConnections();
       }
     } catch (e) {
+      ErrorHandler.logError('ConnectionsScreen._respondToRequest', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al procesar solicitud')),
-        );
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al responder solicitud');
       }
     }
   }
 
   Future<void> _removeConnection(int crewId) async {
     try {
-      await _supabase.from('connections').delete().eq('id', crewId);
+      await _supabase.from('conexiones').delete().eq('id', crewId);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Conexión eliminada')),
@@ -186,10 +194,9 @@ class _ConnectionsScreenState extends State<ConnectionsScreen> with SingleTicker
         _loadConnections();
       }
     } catch (e) {
+      ErrorHandler.logError('ConnectionsScreen._removeConnection', e);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Error al eliminar conexión')),
-        );
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error al eliminar conexión');
       }
     }
   }

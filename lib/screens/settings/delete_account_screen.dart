@@ -79,7 +79,7 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
       // Marcar cuenta como eliminada (soft delete)
       await _supabase
-          .from('profiles')
+          .from('perfiles')
           .update({
             'deleted_at': DateTime.now().toIso8601String(),
             'is_active': false,
@@ -121,150 +121,114 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         title: Text('ELIMINAR CUENTA', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, letterSpacing: 2)),
         backgroundColor: Colors.transparent,
         elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
+          onPressed: () => Navigator.pop(context),
+        ),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildWarningCard(),
-            const SizedBox(height: 30),
+            const SizedBox(height: 32),
             
-            _buildSection('¿QUÉ SUCEDERÁ?'),
-            _buildInfoItem(Icons.delete_forever_rounded, 'Se eliminará tu perfil y toda tu información personal'),
-            _buildInfoItem(Icons.photo_library_rounded, 'Se eliminarán todas tus fotos, videos y archivos de audio'),
-            _buildInfoItem(Icons.message_rounded, 'Se eliminarán todos tus mensajes y conversaciones'),
-            _buildInfoItem(Icons.event_rounded, 'Se cancelarán tus eventos y se eliminarán tus invitaciones'),
-            _buildInfoItem(Icons.link_off_rounded, 'Se eliminarán todas tus conexiones'),
-            _buildInfoItem(Icons.star_rounded, 'Se eliminarán tus calificaciones y referencias'),
+            _buildSection('¿QUÉ SUCEDERÁ CON TU INFO?'),
+            _buildInfoItem(Icons.person_remove_rounded, 'Perfil e identidad artística eliminados'),
+            _buildInfoItem(Icons.auto_awesome_motion_rounded, 'Galería, fotos y videos borrados'),
+            _buildInfoItem(Icons.forum_rounded, 'Conversaciones y mensajes perdidos'),
+            _buildInfoItem(Icons.star_half_rounded, 'Tu reputación y ratings se perderán'),
             
-            const SizedBox(height: 30),
-            _buildSection('CONFIRMACIÓN'),
+            const SizedBox(height: 32),
+            _buildSection('CONFIRMAR ACCIÓN PERMANENTE'),
             
-            // Campo de contraseña
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: ThemeColors.divider(context)),
-              ),
-              child: TextField(
-                controller: _passwordController,
-                obscureText: !_passwordVisible,
-                decoration: InputDecoration(
-                  labelText: 'Contraseña',
-                  hintText: 'Ingresa tu contraseña',
-                  prefixIcon: const Icon(Icons.lock_rounded),
-                  suffixIcon: IconButton(
-                    icon: Icon(_passwordVisible ? Icons.visibility_off : Icons.visibility),
-                    onPressed: () => setState(() => _passwordVisible = !_passwordVisible),
-                  ),
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.all(16),
-                ),
-              ),
+            _buildInputField(
+              controller: _passwordController,
+              label: 'Tu Contraseña',
+              hint: 'Confirma tu identidad',
+              icon: Icons.lock_outline_rounded,
+              isPassword: true,
+              visible: _passwordVisible,
+              onToggleVisibility: () => setState(() => _passwordVisible = !_passwordVisible),
             ),
 
-            // Campo de confirmación
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: ThemeColors.divider(context)),
-              ),
-              child: TextField(
-                controller: _confirmController,
-                decoration: const InputDecoration(
-                  labelText: 'Escribe "ELIMINAR" para confirmar',
-                  hintText: 'ELIMINAR',
-                  prefixIcon: Icon(Icons.warning_rounded),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.all(16),
-                ),
-              ),
+            const SizedBox(height: 16),
+
+            _buildInputField(
+              controller: _confirmController,
+              label: 'Confirmación de Seguridad',
+              hint: 'Escribe "ELIMINAR"',
+              icon: Icons.security_rounded,
             ),
 
-            // Checkbox de aceptación
-            Container(
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: ThemeColors.divider(context)),
-              ),
-              child: CheckboxListTile(
-                value: _agreedToTerms,
-                onChanged: (val) => setState(() => _agreedToTerms = val ?? false),
-                title: Text(
-                  'Entiendo que esta acción es permanente y no se puede deshacer',
-                  style: GoogleFonts.outfit(fontSize: 14),
-                ),
-                activeColor: AppConstants.errorColor,
-              ),
-            ),
+            const SizedBox(height: 20),
 
-            // Mensaje de error
+            _buildCheckboxTile(),
+
             if (_errorMessage != null)
-              Container(
-                margin: const EdgeInsets.only(bottom: 16),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppConstants.errorColor.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppConstants.errorColor),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: AppConstants.errorColor, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        _errorMessage!,
-                        style: GoogleFonts.outfit(color: AppConstants.errorColor, fontSize: 12),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppConstants.errorColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppConstants.errorColor.withOpacity(0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.error_outline, color: AppConstants.errorColor, size: 20),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: GoogleFonts.outfit(color: AppConstants.errorColor, fontSize: 13),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
 
-            // Botón de eliminar
+            const SizedBox(height: 32),
+
             SizedBox(
               width: double.infinity,
+              height: 58,
               child: ElevatedButton(
                 onPressed: _isLoading ? null : _deleteAccount,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppConstants.errorColor,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   elevation: 0,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
                 child: _isLoading
                     ? const SizedBox(
-                        height: 20,
-                        width: 20,
+                        height: 24,
+                        width: 24,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                       )
-                    : Text('ELIMINAR MI CUENTA', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                    : Text('ELIMINAR MI CUENTA DE FORMA PERMANENTE', 
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1)),
               ),
             ),
 
             const SizedBox(height: 16),
 
-            // Botón de cancelar
             SizedBox(
               width: double.infinity,
+              height: 56,
               child: OutlinedButton(
                 onPressed: _isLoading ? null : () => Navigator.pop(context),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: ThemeColors.primaryText(context),
-                  side: BorderSide(color: ThemeColors.divider(context)),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  side: BorderSide(color: ThemeColors.divider(context).withOpacity(0.2)),
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                 ),
-                child: Text('CANCELAR', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+                child: Text('CANCELAR Y VOLVER', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
               ),
             ),
           ],
@@ -275,31 +239,33 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
 
   Widget _buildWarningCard() {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
-        color: AppConstants.errorColor.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppConstants.errorColor, width: 2),
+        color: AppConstants.errorColor.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppConstants.errorColor.withOpacity(0.3), width: 1.5),
       ),
       child: Column(
         children: [
-          Icon(Icons.warning_rounded, color: AppConstants.errorColor, size: 48),
-          const SizedBox(height: 12),
+          const Icon(Icons.report_problem_rounded, color: AppConstants.errorColor, size: 48),
+          const SizedBox(height: 16),
           Text(
-            '¡ADVERTENCIA!',
+            'ZONA DE PELIGRO',
             style: GoogleFonts.outfit(
               color: AppConstants.errorColor,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
+              fontSize: 18,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 2,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Text(
-            'Esta acción es permanente y no se puede deshacer. Toda tu información será eliminada de forma definitiva.',
+            'Estás a punto de borrar tu carrera en Óolale. Esta acción no se puede deshacer y perderás todas tus conexiones y reputación acumulada.',
             textAlign: TextAlign.center,
             style: GoogleFonts.outfit(
               color: ThemeColors.secondaryText(context),
-              fontSize: 14,
+              fontSize: 13,
+              height: 1.5,
             ),
           ),
         ],
@@ -314,37 +280,114 @@ class _DeleteAccountScreenState extends State<DeleteAccountScreen> {
         title,
         style: GoogleFonts.outfit(
           color: AppConstants.primaryColor,
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w900,
-          letterSpacing: 2,
+          letterSpacing: 1.5,
         ),
       ),
     );
   }
 
   Widget _buildInfoItem(IconData icon, String text) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: ThemeColors.divider(context)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
-          Icon(icon, color: AppConstants.errorColor, size: 24),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: AppConstants.errorColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppConstants.errorColor, size: 18),
+          ),
+          const SizedBox(width: 16),
           Expanded(
             child: Text(
               text,
               style: GoogleFonts.outfit(
                 color: ThemeColors.secondaryText(context),
                 fontSize: 13,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildInputField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    required IconData icon,
+    bool isPassword = false,
+    bool visible = false,
+    VoidCallback? onToggleVisibility,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: ThemeColors.divider(context).withOpacity(0.1)),
+      ),
+      child: TextField(
+        controller: controller,
+        obscureText: isPassword && !visible,
+        style: GoogleFonts.outfit(fontWeight: FontWeight.w500),
+        decoration: InputDecoration(
+          labelText: label,
+          labelStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context), fontSize: 13),
+          hintText: hint,
+          hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context).withOpacity(0.4), fontSize: 13),
+          prefixIcon: Icon(icon, color: AppConstants.errorColor.withOpacity(0.6), size: 20),
+          suffixIcon: isPassword
+              ? IconButton(
+                  icon: Icon(visible ? Icons.visibility_off : Icons.visibility, size: 20),
+                  onPressed: onToggleVisibility,
+                )
+              : null,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+          filled: false,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCheckboxTile() {
+    return InkWell(
+      onTap: () => setState(() => _agreedToTerms = !_agreedToTerms),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _agreedToTerms ? AppConstants.errorColor.withOpacity(0.05) : Colors.transparent,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: _agreedToTerms ? AppConstants.errorColor.withOpacity(0.2) : ThemeColors.divider(context).withOpacity(0.1),
+          ),
+        ),
+        child: Row(
+          children: [
+            Checkbox(
+              value: _agreedToTerms,
+              onChanged: (val) => setState(() => _agreedToTerms = val ?? false),
+              activeColor: AppConstants.errorColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+            ),
+            Expanded(
+              child: Text(
+                'Entiendo que esta acción es definitiva y borra toda mi carrera en la plataforma.',
+                style: GoogleFonts.outfit(
+                  fontSize: 12,
+                  color: _agreedToTerms ? ThemeColors.primaryText(context) : ThemeColors.secondaryText(context),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

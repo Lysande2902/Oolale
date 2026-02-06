@@ -6,6 +6,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'dart:io';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 import '../../services/storage_service.dart';
 
 class UploadMediaScreen extends StatefulWidget {
@@ -84,7 +85,7 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
 
       debugPrint('URL obtenida: $publicUrl');
 
-      await _supabase.from('portfolio_media').insert({
+      await _supabase.from('archivos_multimedia').insert({
         'profile_id': widget.userId,
         'tipo': _selectedType,
         'titulo': _titleController.text.trim(),
@@ -112,15 +113,14 @@ class _UploadMediaScreenState extends State<UploadMediaScreen> {
         });
       }
     } catch (e, stackTrace) {
-      debugPrint('❌ Error completo al subir: $e');
-      debugPrint('Stack trace: $stackTrace');
+      ErrorHandler.logError('UploadMediaScreen._upload', e, stackTrace);
       if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 5),
-          ),
+        setState(() => _isUploading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error al subir archivo',
+          onRetry: _upload,
         );
       }
     } finally {

@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import '../../models/conversation.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
+import '../../utils/error_handler.dart';
 
 class MessagesScreen extends StatefulWidget {
   const MessagesScreen({super.key});
@@ -36,7 +37,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   void _setupRealtime() {
     _subscription = _supabase
-        .from('intercom')
+        .from('conversaciones')
         .stream(primaryKey: ['id'])
         .listen((_) => _loadConversations());
   }
@@ -56,30 +57,39 @@ class _MessagesScreenState extends State<MessagesScreen> {
       final blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
 
       final data = await _supabase
-          .from('intercom')
-          .select('*, profiles!intercom_remitente_id_fkey(nombre_artistico, foto_perfil)')
+          .from('conversaciones')
+          .select('''
+            *,
+            remitente:perfiles!conversaciones_remitente_id_fkey(nombre_artistico, foto_perfil),
+            destinatario:perfiles!conversaciones_destinatario_id_fkey(nombre_artistico, foto_perfil)
+          ''')
           .or('remitente_id.eq.$userId,destinatario_id.eq.$userId')
           .order('created_at', ascending: false);
 
       final Map<String, Conversation> chatGroups = {};
       
       for (var msg in data) {
-        final String otherId = msg['remitente_id'] == userId 
-            ? msg['destinatario_id'] 
-            : msg['remitente_id'];
+        final bool iAmSender = msg['remitente_id'] == userId;
+        final String otherId = iAmSender ? msg['destinatario_id'] : msg['remitente_id'];
         
         // Filtrar usuarios bloqueados
         if (blockedIds.contains(otherId)) continue;
         
         if (!chatGroups.containsKey(otherId)) {
+          // El interlocutor es el destinatario si yo envié, o el remitente si yo recibí
+          final otherProfile = iAmSender ? msg['destinatario'] : msg['remitente'];
+          
           chatGroups[otherId] = Conversation(
             interlocutorId: otherId,
-            interlocutorName: msg['profiles']?['nombre_artistico'] ?? 'Artista',
-            interlocutorPhoto: msg['profiles']?['foto_perfil'],
-            lastMessage: msg['riff_text'] ?? '',
+            interlocutorName: otherProfile?['nombre_artistico'] ?? 'Artista',
+            interlocutorPhoto: otherProfile?['foto_perfil'],
+            lastMessage: msg['contenido'] ?? '',
             lastDate: DateTime.parse(msg['created_at']),
-            unreadCount: (msg['remitente_id'] != userId && !msg['leido']) ? 1 : 0,
+            unreadCount: (!iAmSender && !msg['leido']) ? 1 : 0,
           );
+        } else if (!iAmSender && !msg['leido']) {
+          // Sumar al contador de no leídos si hay más mensajes nuevos en el mismo grupo
+          chatGroups[otherId]!.unreadCount++;
         }
       }
 
@@ -90,8 +100,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
         });
       }
     } catch (e) {
-      debugPrint('Error: $e');
-      if (mounted) setState(() => _isLoading = false);
+      ErrorHandler.logError('MessagesScreen._loadConversations', e);
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ErrorHandler.showErrorDialog(
+          context,
+          e,
+          title: 'Error cargando mensajes',
+          onRetry: _loadConversations,
+        );
+      }
     }
   }
 
@@ -113,11 +131,6 @@ class _MessagesScreenState extends State<MessagesScreen> {
           : _conversations.isEmpty
               ? _buildEmptyState()
               : _buildList(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => context.push('/search'),
-        backgroundColor: AppConstants.primaryColor,
-        child: const Icon(Icons.add, color: Colors.black),
-      ),
     );
   }
 
@@ -193,23 +206,33 @@ class _ConversationTile extends StatelessWidget {
                       children: [
                         Text(
                           conversation.interlocutorName,
-                          style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                          style: GoogleFonts.outfit(
+                            fontWeight: FontWeight.w800, // Nombre mucho más fuerte
+                            fontSize: 17, // Un poco más grande
+                            color: ThemeColors.primaryText(context),
+                          ),
                         ),
                         Text(
                           _formatDate(conversation.lastDate),
-                          style: GoogleFonts.outfit(color: ThemeColors.iconSecondary(context), fontSize: 11),
+                          style: GoogleFonts.outfit(
+                            color: ThemeColors.secondaryText(context),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 6),
                     Text(
                       conversation.lastMessage,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: GoogleFonts.outfit(
-                        color: hasUnread ? ThemeColors.primaryText(context) : ThemeColors.hintText(context),
-                        fontSize: 13,
-                        fontWeight: hasUnread ? FontWeight.bold : FontWeight.normal,
+                        color: hasUnread 
+                            ? ThemeColors.primaryText(context) 
+                            : ThemeColors.primaryText(context).withOpacity(0.6), // Más oscuro que el anterior
+                        fontSize: 14,
+                        fontWeight: hasUnread ? FontWeight.w700 : FontWeight.w500, // Más peso táctil
                       ),
                     ),
                   ],
@@ -229,10 +252,11 @@ class _ConversationTile extends StatelessWidget {
   }
 
   String _formatDate(DateTime date) {
+    final localDate = date.toLocal();
     final now = DateTime.now();
-    if (date.year == now.year && date.month == now.month && date.day == now.day) {
-      return DateFormat('HH:mm').format(date);
+    if (localDate.year == now.year && localDate.month == now.month && localDate.day == now.day) {
+      return DateFormat('HH:mm').format(localDate);
     }
-    return DateFormat('dd/MM').format(date);
+    return DateFormat('dd/MM').format(localDate);
   }
 }

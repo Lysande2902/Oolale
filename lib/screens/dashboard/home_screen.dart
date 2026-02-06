@@ -13,6 +13,7 @@ import '../events/events_screen.dart';
 import '../profile/profile_screen.dart';
 import '../profile/unified_profile_screen.dart';
 import '../reports/report_content_screen.dart';
+import '../../utils/error_handler.dart';
 import 'search_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -35,7 +36,9 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Theme.of(context).brightness == Brightness.dark 
+          ? Theme.of(context).scaffoldBackgroundColor 
+          : Colors.white,
       body: Stack(
         children: [
           IndexedStack(index: _currentIndex, children: screens),
@@ -49,24 +52,37 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildBottomNav() {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Container(
-      height: 90,
+      height: 100,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.bottomCenter,
           end: Alignment.topCenter,
-          colors: [Theme.of(context).scaffoldBackgroundColor, Theme.of(context).scaffoldBackgroundColor.withOpacity(0.0)],
-          stops: const [0.5, 1.0],
+          colors: [
+            Theme.of(context).scaffoldBackgroundColor, 
+            Theme.of(context).scaffoldBackgroundColor.withOpacity(0.0)
+          ],
         ),
       ),
       child: Center(
         child: Container(
-          height: 60,
-          margin: const EdgeInsets.symmetric(horizontal: 40),
+          height: 65,
+          margin: const EdgeInsets.symmetric(horizontal: 20), // Un poco más ancho
           decoration: BoxDecoration(
             color: Theme.of(context).cardColor,
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: AppConstants.primaryColor.withOpacity(0.1), width: 1),
+            borderRadius: BorderRadius.circular(35),
+            border: Border.all(
+              color: isDark ? AppConstants.primaryColor.withOpacity(0.1) : AppConstants.borderLight,
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(isDark ? 0.3 : 0.12),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
+              ),
+            ],
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
@@ -186,7 +202,7 @@ class _StreamViewState extends State<_StreamView> {
 
     try {
       final data = await _supabase
-          .from('notifications')
+          .from('notificaciones')
           .select('id')
           .eq('user_id', userId)
           .eq('leido', false);
@@ -198,6 +214,10 @@ class _StreamViewState extends State<_StreamView> {
       }
     } catch (e) {
       debugPrint('Error cargando notificaciones no leídas: $e');
+      // Solo mostrar error si es crítico (no de red, ya que es carga en background)
+      if (!ErrorHandler.isNetworkError(e) && mounted) {
+        ErrorHandler.showErrorSnackBar(context, e, customMessage: 'Error cargando notificaciones');
+      }
     }
   }
 
@@ -243,8 +263,8 @@ class _StreamViewState extends State<_StreamView> {
         final blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
 
         final postsData = await _supabase
-            .from('posts')
-            .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, foto_perfil)')
+            .from('publicaciones')
+            .select('*, author:perfiles(nombre_artistico, foto_perfil)')
             .order('created_at', ascending: false)
             .limit(20);
 
@@ -270,7 +290,7 @@ class _StreamViewState extends State<_StreamView> {
       // 1. Cargar perfil propio
       if (userId != null) {
         debugPrint('HOME: Cargando perfil para $userId');
-        final profile = await _supabase.from('profiles').select().eq('id', userId).maybeSingle();
+        final profile = await _supabase.from('perfiles').select().eq('id', userId).maybeSingle();
         debugPrint('HOME: Perfil cargado: $profile');
         
         if (profile != null && mounted) {
@@ -285,33 +305,49 @@ class _StreamViewState extends State<_StreamView> {
         }
       }
 
-      final today = DateTime.now().toIso8601String().split('T')[0];
-      final threeDaysLater = DateTime.now().add(const Duration(days: 7)).toIso8601String().split('T')[0];
-
-      // 2. Gigs Urgentes (Próximos 7 días)
-      final urgentGigsResponse = await _supabase.from('gigs')
-          .select()
-          .gte('fecha_gig', today)
-          .lte('fecha_gig', threeDaysLater)
-          .limit(10);
-      
-      // 3. Headliners (Artistas Destacados)
-      final headlinersResponse = await _supabase.from('profiles')
-          .select()
-          .eq('verificado', true)
-          .limit(10);
-
-      // 4. Obtener lista de usuarios bloqueados
+      // 2. Obtener lista de usuarios bloqueados (Mutual: mis bloqueados + quienes me bloquearon)
       List<String> blockedIds = [];
       if (userId != null) {
         final blockedUsers = await _supabase
             .from('usuarios_bloqueados')
-            .select('bloqueado_id')
-            .eq('usuario_id', userId)
+            .select('usuario_id, bloqueado_id')
+            .or('usuario_id.eq.$userId,bloqueado_id.eq.$userId')
             .eq('activo', true);
         
-        blockedIds = blockedUsers.map((b) => b['bloqueado_id'] as String).toList();
+        blockedIds = blockedUsers.map((b) => 
+          b['usuario_id'] == userId ? b['bloqueado_id'].toString() : b['usuario_id'].toString()
+        ).toList();
+        
+        debugPrint('HOME: Usuarios bloqueados (mutual): ${blockedIds.length}');
       }
+
+      final today = DateTime.now().toIso8601String().split('T')[0];
+      final threeDaysLater = DateTime.now().add(const Duration(days: 7)).toIso8601String().split('T')[0];
+
+      // 3. Gigs Urgentes (Próximos 7 días)
+      var urgentQuery = _supabase.from('eventos').select();
+      if (blockedIds.isNotEmpty) {
+        urgentQuery = urgentQuery.filter('organizador_id', 'not.in', '(${blockedIds.join(',')})');
+      }
+      
+      final urgentGigsResponse = await urgentQuery
+          .gte('fecha_gig', today)
+          .lte('fecha_gig', threeDaysLater)
+          .limit(10);
+      
+      // 4. Headliners (Artistas Destacados)
+      var headlinersQuery = _supabase.from('perfiles')
+          .select()
+          .eq('verificado', true);
+      
+      if (userId != null) {
+        headlinersQuery = headlinersQuery.neq('id', userId);
+      }
+      if (blockedIds.isNotEmpty) {
+        headlinersQuery = headlinersQuery.filter('id', 'not.in', '(${blockedIds.join(',')})');
+      }
+      
+      final headlinersResponse = await headlinersQuery.limit(10);
 
       // 5. Últimos Posts (20 aleatorios, sin bloqueados)
       List<dynamic> postsData;
@@ -323,8 +359,8 @@ class _StreamViewState extends State<_StreamView> {
         debugPrint('RPC no disponible, usando query normal: $e');
         // Fallback: cargar posts normales
         postsData = await _supabase
-            .from('posts')
-            .select('*, author:profiles!posts_author_id_fkey(nombre_artistico, foto_perfil)')
+            .from('publicaciones')
+            .select('*, author:perfiles(nombre_artistico, foto_perfil)')
             .order('created_at', ascending: false)
             .limit(20);
       }
@@ -339,7 +375,9 @@ class _StreamViewState extends State<_StreamView> {
         setState(() {
           // Mezclar un poco para que sea dinámico
           _urgentGigs = List.from(urgentGigsResponse)..shuffle();
-          _headliners = List.from(headlinersResponse)..shuffle();
+          _headliners = List.from(headlinersResponse)
+              .where((h) => h['id'] != userId && !blockedIds.contains(h['id']))
+              .toList()..shuffle();
           
           // Fallback si no hay urgentes, usar cualquiera futuro
           if (_urgentGigs.isEmpty) {
@@ -363,7 +401,7 @@ class _StreamViewState extends State<_StreamView> {
   Future<void> _loadBackupGigs() async {
     // Cargar cualquier evento futuro si no hay urgentes
     final today = DateTime.now().toIso8601String().split('T')[0];
-    final response = await _supabase.from('gigs')
+    final response = await _supabase.from('eventos')
         .select()
         .gte('fecha_gig', today)
         .order('fecha_gig', ascending: true)
@@ -414,7 +452,7 @@ class _StreamViewState extends State<_StreamView> {
 
     setState(() => _isPosting = true);
     try {
-      await _supabase.from('posts').insert({
+      await _supabase.from('publicaciones').insert({
         'author_id': userId,
         'content': content,
       });
@@ -606,40 +644,45 @@ class _StreamViewState extends State<_StreamView> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Row(
-                            children: [
-                              Icon(
-                                isGig ? Icons.event_available : Icons.star,
-                                color: AppConstants.primaryColor,
-                                size: 24,
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                isGig ? 'Evento Destacado' : 'Artista VIP',
-                                style: GoogleFonts.outfit(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: ThemeColors.primaryText(context),
+                          Expanded(
+                            child: Row(
+                              children: [
+                                Icon(
+                                  isGig ? Icons.event_available : Icons.star,
+                                  color: AppConstants.primaryColor,
+                                  size: 24,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    isGig ? 'Evento Sugerido' : 'Artista Recomendado',
+                                    style: GoogleFonts.outfit(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: ThemeColors.primaryText(context),
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 12),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                             decoration: BoxDecoration(
-                              color: isGig 
-                                ? AppConstants.primaryColor.withOpacity(0.2)
-                                : Colors.purpleAccent.withOpacity(0.2),
+                              color: AppConstants.primaryColor.withOpacity(0.2),
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
+                                color: AppConstants.primaryColor,
                                 width: 1,
                               ),
                             ),
                             child: Text(
-                              isGig ? 'PRÓXIMO' : 'HEADLINER',
+                              isGig ? 'MUY PRONTO' : 'DESTACADO',
                               style: GoogleFonts.outfit(
-                                color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
+                                color: AppConstants.primaryColor,
                                 fontSize: 11,
                                 fontWeight: FontWeight.bold,
                                 letterSpacing: 0.5,
@@ -661,136 +704,155 @@ class _StreamViewState extends State<_StreamView> {
                           height: 220,
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(20),
-                            color: Theme.of(context).cardColor,
+                            color: Theme.of(context).brightness == Brightness.dark
+                                ? Theme.of(context).cardColor
+                                : Colors.white,
+                            border: Border.all(
+                              color: Theme.of(context).brightness == Brightness.dark
+                                  ? Colors.transparent
+                                  : AppConstants.primaryColor,
+                              width: 2,
+                            ),
                             boxShadow: [
                               BoxShadow(
-                                color: (isGig ? AppConstants.primaryColor : Colors.purpleAccent).withOpacity(0.2),
-                                blurRadius: 20,
-                                offset: const Offset(0, 8),
+                                color: AppConstants.primaryColor.withOpacity(0.15),
+                                blurRadius: 15,
+                                offset: const Offset(0, 6),
                               ),
                             ],
                           ),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(20),
-                            child: Stack(
+                            child: Column(
                               children: [
-                                // Background Image
-                                if (!isGig && featuredItem['banner_url'] != null)
-                                  Image.network(
-                                    featuredItem['banner_url'],
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
-                                if (isGig && featuredItem['flyer_url'] != null)
-                                  Image.network(
-                                    featuredItem['flyer_url'],
-                                    width: double.infinity,
-                                    height: double.infinity,
-                                    fit: BoxFit.cover,
-                                  ),
-
-                                // Gradient Overlay
-                                Container(
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      begin: Alignment.topCenter,
-                                      end: Alignment.bottomCenter,
-                                      colors: [
-                                        Colors.transparent,
-                                        Colors.black.withOpacity(0.7),
-                                        Colors.black.withOpacity(0.95),
-                                      ],
-                                      stops: const [0.0, 0.5, 1.0],
-                                    ),
+                                // Imagen superior (60% de la altura)
+                                Expanded(
+                                  flex: 6,
+                                  child: Stack(
+                                    children: [
+                                      // Background Image
+                                      if (!isGig && featuredItem['banner_url'] != null)
+                                        Image.network(
+                                          featuredItem['banner_url'],
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      if (isGig && featuredItem['flyer_url'] != null)
+                                        Image.network(
+                                          featuredItem['flyer_url'],
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.cover,
+                                        ),
+                                      // Placeholder si no hay imagen
+                                      if ((isGig && featuredItem['flyer_url'] == null) ||
+                                          (!isGig && featuredItem['banner_url'] == null))
+                                        Container(
+                                          color: AppConstants.primaryColor.withOpacity(0.1),
+                                          child: Center(
+                                            child: Icon(
+                                              isGig ? Icons.event : Icons.person,
+                                              size: 60,
+                                              color: AppConstants.primaryColor.withOpacity(0.3),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
                                   ),
                                 ),
-
-                                // Content
-                                Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      // Title
-                                      Text(
-                                        isGig
-                                            ? (featuredItem['titulo_bolo'] ?? 'Evento')
-                                            : (featuredItem['nombre_artistico'] ?? 'Artista'),
-                                        style: GoogleFonts.outfit(
-                                          color: Colors.white,
-                                          fontSize: 22,
-                                          fontWeight: FontWeight.bold,
-                                          height: 1.2,
+                                // Información inferior (40% de la altura)
+                                Expanded(
+                                  flex: 4,
+                                  child: Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Theme.of(context).brightness == Brightness.dark
+                                          ? Theme.of(context).cardColor
+                                          : Colors.white,
+                                      border: Border(
+                                        top: BorderSide(
+                                          color: Theme.of(context).brightness == Brightness.dark
+                                              ? ThemeColors.divider(context)
+                                              : AppConstants.primaryColor.withOpacity(0.2),
+                                          width: 1,
                                         ),
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      const SizedBox(height: 12),
-                                      // Location/Role
-                                      Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.all(6),
-                                            decoration: BoxDecoration(
-                                              color: (isGig ? AppConstants.primaryColor : Colors.purpleAccent).withOpacity(0.2),
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: Icon(
-                                              isGig ? Icons.location_on : Icons.music_note,
-                                              color: isGig ? AppConstants.primaryColor : Colors.purpleAccent,
-                                              size: 16,
-                                            ),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        // Title
+                                        Text(
+                                          isGig
+                                              ? (featuredItem['titulo_bolo'] ?? 'Evento')
+                                              : (featuredItem['nombre_artistico'] ?? 'Artista'),
+                                          style: GoogleFonts.outfit(
+                                            color: ThemeColors.primaryText(context),
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            height: 1.1,
                                           ),
-                                          const SizedBox(width: 10),
-                                          Expanded(
-                                            child: Text(
-                                              isGig
-                                                  ? (featuredItem['lugar_nombre'] ?? 'Ubicación')
-                                                  : (featuredItem['rol_principal'] ?? 'Músico'),
-                                              style: GoogleFonts.outfit(
-                                                color: Colors.white.withOpacity(0.9),
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w500,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      if (isGig && featuredItem['fecha_gig'] != null) ...[
-                                        const SizedBox(height: 8),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        // Location/Role
                                         Row(
                                           children: [
-                                            Container(
-                                              padding: const EdgeInsets.all(6),
-                                              decoration: BoxDecoration(
-                                                color: AppConstants.primaryColor.withOpacity(0.2),
-                                                borderRadius: BorderRadius.circular(8),
-                                              ),
-                                              child: Icon(
-                                                Icons.calendar_today,
-                                                color: AppConstants.primaryColor,
-                                                size: 16,
-                                              ),
+                                            Icon(
+                                              isGig ? Icons.location_on : Icons.music_note,
+                                              color: AppConstants.primaryColor,
+                                              size: 14,
                                             ),
-                                            const SizedBox(width: 10),
-                                            Text(
-                                              DateFormat('dd MMM yyyy').format(
-                                                DateTime.parse(featuredItem['fecha_gig']),
-                                              ),
-                                              style: GoogleFonts.outfit(
-                                                color: Colors.white.withOpacity(0.9),
-                                                fontSize: 14,
-                                                fontWeight: FontWeight.w500,
+                                            const SizedBox(width: 6),
+                                            Expanded(
+                                              child: Text(
+                                                isGig
+                                                    ? (featuredItem['lugar_nombre'] ?? 'Ubicación')
+                                                    : (featuredItem['rol_principal'] ?? 'Músico'),
+                                                style: GoogleFonts.outfit(
+                                                  color: ThemeColors.secondaryText(context),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                  height: 1.2,
+                                                ),
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
                                               ),
                                             ),
                                           ],
                                         ),
+                                        // Fecha (solo para eventos)
+                                        if (isGig && featuredItem['fecha_gig'] != null) ...[
+                                          const SizedBox(height: 3),
+                                          Row(
+                                            children: [
+                                              Icon(
+                                                Icons.calendar_today,
+                                                color: AppConstants.primaryColor,
+                                                size: 14,
+                                              ),
+                                              const SizedBox(width: 6),
+                                              Text(
+                                                DateFormat('dd MMM yyyy').format(
+                                                  DateTime.parse(featuredItem['fecha_gig']),
+                                                ),
+                                                style: GoogleFonts.outfit(
+                                                  color: ThemeColors.secondaryText(context),
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                  height: 1.2,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ],
                                       ],
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ],
@@ -821,8 +883,20 @@ class _StreamViewState extends State<_StreamView> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppConstants.primaryColor.withOpacity(0.1)),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark 
+              ? AppConstants.primaryColor.withOpacity(0.15)
+              : AppConstants.borderLight,
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.4 : 0.08),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -837,6 +911,8 @@ class _StreamViewState extends State<_StreamView> {
                     hintText: '¿Qué estás tocando hoy?',
                     hintStyle: GoogleFonts.outfit(color: ThemeColors.hintText(context)),
                     border: InputBorder.none,
+                    filled: false,
+                    fillColor: Colors.transparent,
                   ),
                 ),
               ),
