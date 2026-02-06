@@ -8,6 +8,10 @@ class NotificationService {
   static final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
   static final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
   static final _supabase = Supabase.instance.client;
+  static RealtimeChannel? _notificationChannel;
+  
+  // 🆕 Callback para navegación (se configurará desde main.dart)
+  static Function(String type, Map<String, dynamic> data)? onNotificationTap;
 
   // Inicializar servicio de notificaciones
   static Future<void> initialize() async {
@@ -23,12 +27,137 @@ class NotificationService {
       // Obtener y guardar token FCM
       await _saveDeviceToken();
       
-      // Configurar listeners
+      // Configurar listeners de Firebase
       _setupMessageHandlers();
+      
+      // 🆕 Configurar listener de Supabase Realtime
+      await _setupRealtimeListener();
       
       debugPrint('✅ NotificationService inicializado correctamente');
     } catch (e) {
       debugPrint('❌ Error inicializando NotificationService: $e');
+    }
+  }
+
+  // 🆕 Configurar listener de Supabase Realtime para notificaciones automáticas
+  static Future<void> _setupRealtimeListener() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) {
+        debugPrint('⚠️ No hay usuario autenticado, no se puede configurar Realtime');
+        return;
+      }
+
+      debugPrint('🔧 Configurando Supabase Realtime listener...');
+
+      // Cancelar canal anterior si existe
+      if (_notificationChannel != null) {
+        await _notificationChannel!.unsubscribe();
+      }
+
+      // Crear canal de Realtime para escuchar nuevas notificaciones
+      _notificationChannel = _supabase
+          .channel('notifications:$userId')
+          .onPostgresChanges(
+            event: PostgresChangeEvent.insert,
+            schema: 'public',
+            table: 'notificaciones',
+            filter: PostgresChangeFilter(
+              type: PostgresChangeFilterType.eq,
+              column: 'user_id',
+              value: userId,
+            ),
+            callback: (payload) {
+              debugPrint('🔔 ========================================');
+              debugPrint('🔔 NUEVA NOTIFICACIÓN RECIBIDA VIA REALTIME!');
+              debugPrint('🔔 Payload: $payload');
+              debugPrint('🔔 ========================================');
+              
+              // Extraer datos de la notificación
+              final newRecord = payload.newRecord;
+              if (newRecord != null) {
+                final title = newRecord['title'] as String?;
+                final message = newRecord['message'] as String?;
+                final type = newRecord['type'] as String?;
+                final data = newRecord['data'] as Map<String, dynamic>?;
+
+                if (title != null && message != null) {
+                  // Mostrar notificación local automáticamente
+                  _showLocalNotificationFromData(
+                    title: title,
+                    body: message,
+                    type: type ?? 'general',
+                    data: data ?? {},
+                  );
+                }
+              }
+            },
+          )
+          .subscribe();
+
+      debugPrint('✅ Supabase Realtime listener configurado para user: $userId');
+    } catch (e) {
+      debugPrint('❌ Error configurando Realtime listener: $e');
+    }
+  }
+
+  // 🆕 Mostrar notificación local desde datos de Supabase
+  static Future<void> _showLocalNotificationFromData({
+    required String title,
+    required String body,
+    required String type,
+    required Map<String, dynamic> data,
+  }) async {
+    try {
+      debugPrint('🔔 Mostrando notificación local desde Realtime...');
+      debugPrint('   Título: $title');
+      debugPrint('   Cuerpo: $body');
+      debugPrint('   Tipo: $type');
+
+      final notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+
+      await _localNotifications.show(
+        notificationId,
+        title,
+        body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'high_importance_channel',
+            'Notificaciones Importantes',
+            channelDescription: 'Canal para notificaciones importantes de Óolale',
+            importance: Importance.high,
+            priority: Priority.high,
+            icon: '@mipmap/ic_launcher',
+            sound: RawResourceAndroidNotificationSound('notification'),
+            playSound: true,
+            enableVibration: true,
+          ),
+          iOS: DarwinNotificationDetails(
+            presentAlert: true,
+            presentBadge: true,
+            presentSound: true,
+            sound: 'default',
+          ),
+        ),
+        payload: '$type|${data.toString()}',
+      );
+
+      debugPrint('✅ Notificación local mostrada exitosamente desde Realtime');
+    } catch (e) {
+      debugPrint('❌ Error mostrando notificación local desde Realtime: $e');
+    }
+  }
+
+  // 🆕 Detener listener de Realtime
+  static Future<void> stopRealtimeListener() async {
+    try {
+      if (_notificationChannel != null) {
+        await _notificationChannel!.unsubscribe();
+        _notificationChannel = null;
+        debugPrint('✅ Realtime listener detenido');
+      }
+    } catch (e) {
+      debugPrint('❌ Error deteniendo Realtime listener: $e');
     }
   }
 
@@ -222,7 +351,18 @@ class NotificationService {
   // Manejar tap en notificación local
   static void _onNotificationTapped(NotificationResponse response) {
     debugPrint('👆 Notificación local tocada: ${response.payload}');
-    // TODO: Implementar navegación desde payload
+    
+    if (response.payload != null) {
+      // El payload tiene formato: "tipo|{data}"
+      final parts = response.payload!.split('|');
+      if (parts.length >= 2) {
+        final type = parts[0];
+        // Llamar al callback de navegación si está configurado
+        if (onNotificationTap != null) {
+          onNotificationTap!(type, {});
+        }
+      }
+    }
   }
 
   // Manejar tap en notificación (navegación)
@@ -231,29 +371,11 @@ class NotificationService {
       final type = data['type'];
       
       debugPrint('🔀 Manejando navegación para tipo: $type');
+      debugPrint('   Datos: $data');
       
-      // TODO: Implementar navegación real con GoRouter
-      switch (type) {
-        case 'connection_request':
-          debugPrint('→ Navegar a solicitudes de conexión');
-          break;
-        case 'connection_accepted':
-          debugPrint('→ Navegar a conexiones');
-          break;
-        case 'new_message':
-          final userId = data['user_id'];
-          debugPrint('→ Navegar a chat con usuario: $userId');
-          break;
-        case 'new_rating':
-          final userId = data['user_id'];
-          debugPrint('→ Navegar a calificaciones de usuario: $userId');
-          break;
-        case 'event_invitation':
-          final eventId = data['event_id'];
-          debugPrint('→ Navegar a evento: $eventId');
-          break;
-        default:
-          debugPrint('⚠️ Tipo de notificación desconocido: $type');
+      // Llamar al callback de navegación si está configurado
+      if (onNotificationTap != null) {
+        onNotificationTap!(type ?? 'unknown', data);
       }
     } catch (e) {
       debugPrint('❌ Error manejando tap de notificación: $e');
@@ -314,6 +436,9 @@ class NotificationService {
   // Eliminar token al cerrar sesión
   static Future<void> deleteToken() async {
     try {
+      // Detener listener de Realtime
+      await stopRealtimeListener();
+      
       final token = await _firebaseMessaging.getToken();
       final userId = _supabase.auth.currentUser?.id;
 

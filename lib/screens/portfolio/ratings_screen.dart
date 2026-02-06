@@ -34,9 +34,9 @@ class _RatingsScreenState extends State<RatingsScreen> {
     try {
       // 1. Obtener calificaciones
       final calificacionesResponse = await _supabase
-          .from('calificaciones')
+          .from('referencias')
           .select()
-          .eq('para_usuario_id', widget.userId)
+          .eq('evaluado_id', widget.userId)
           .order('created_at', ascending: false);
 
       final List<Calificacion> calificaciones =
@@ -525,12 +525,12 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
     setState(() => isSubmitting = true);
 
     try {
-      await _supabase.from('calificaciones').insert({
-        'de_usuario_id': currentUserId,
-        'para_usuario_id': widget.userId,
-        'estrellas': selectedStars,
+      await _supabase.from('referencias').insert({
+        'evaluador_id': currentUserId,
+        'evaluado_id': widget.userId,
+        'puntuacion': selectedStars,
         'comentario': _commentController.text,
-        'tipo_interaccion': selectedInteractionType,
+        'verificado': false,
         'created_at': DateTime.now().toIso8601String(),
       });
 

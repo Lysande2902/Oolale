@@ -386,6 +386,58 @@ class _AppRouter extends StatelessWidget {
 
     final themeProvider = Provider.of<ThemeProvider>(context);
 
+    // 🆕 Configurar callback de navegación para notificaciones
+    NotificationService.onNotificationTap = (String type, Map<String, dynamic> data) {
+      debugPrint('🔔 Navegando desde notificación: $type');
+      
+      try {
+        switch (type) {
+          case 'connection_request':
+            // Navegar a solicitudes de conexión pendientes
+            router.go('/connection-requests');
+            break;
+
+          case 'connection_accepted':
+            // Navegar a lista de conexiones
+            router.go('/connections');
+            break;
+
+          case 'new_message':
+            // Navegar a mensajes (o al chat específico si tenemos el ID)
+            final senderId = data['sender_id'] as String?;
+            if (senderId != null && senderId.isNotEmpty) {
+              final senderName = data['sender_name'] as String? ?? 'Usuario';
+              router.go('/messages/$senderId', extra: senderName);
+            } else {
+              router.go('/messages');
+            }
+            break;
+
+          case 'new_rating':
+            // Navegar a pantalla de calificaciones del usuario actual
+            final userId = Supabase.instance.client.auth.currentUser?.id;
+            if (userId != null) {
+              router.go('/ratings/$userId');
+            }
+            break;
+
+          case 'event_invitation':
+            // Navegar a invitaciones de eventos
+            router.go('/event-invitations');
+            break;
+
+          default:
+            // Si no reconocemos el tipo, ir a notificaciones
+            debugPrint('⚠️ Tipo de notificación desconocido: $type');
+            router.go('/notifications');
+        }
+      } catch (e) {
+        debugPrint('❌ Error navegando: $e');
+        // En caso de error, ir a notificaciones
+        router.go('/notifications');
+      }
+    };
+
     return ConnectivityWrapper(
       child: MaterialApp.router(
         title: AppConstants.appName,

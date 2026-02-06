@@ -44,12 +44,12 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
     setState(() => isSubmitting = true);
 
     try {
-      await _supabase.from('calificaciones').insert({
-        'de_usuario_id': currentUserId,
-        'para_usuario_id': widget.userId,
-        'estrellas': selectedStars,
+      await _supabase.from('referencias').insert({
+        'evaluador_id': currentUserId,
+        'evaluado_id': widget.userId,
+        'puntuacion': selectedStars,
         'comentario': _commentController.text,
-        'tipo_interaccion': selectedInteractionType,
+        'verificado': false,
         'created_at': DateTime.now().toIso8601String(),
       });
 
