@@ -17,12 +17,18 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
   final TextEditingController _searchController = TextEditingController();
   List<dynamic> _results = [];
   bool _isLoading = false;
-  String _activeFilter = 'todos'; 
+  String _activeFilter = 'todos';
+  
+  // Filtros avanzados
+  List<String> _selectedInstruments = [];
+  List<String> _selectedGenres = [];
+  String? _selectedLocation; 
 
   final ScrollController _scrollController = ScrollController();
   int _page = 0;
   bool _hasMore = true;
   static const int _limit = 20;
+  static const int _minRatingsForTopRated = 5; // Mínimo de calificaciones para aparecer en "Mejor Valorados"
 
   @override
   void initState() {
@@ -77,13 +83,33 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
         queryBuilder = queryBuilder.ilike('nombre_artistico', '%$query%');
       }
 
-      // Aplicar filtro por tipo de rol
-      if (_activeFilter == 'musicos') {
-        queryBuilder = queryBuilder.eq('rol_principal', 'musico');
-      } else if (_activeFilter == 'bandas') {
-        queryBuilder = queryBuilder.eq('rol_principal', 'banda');
-      } else if (_activeFilter == 'open_to_work') {
+      // Aplicar filtros
+      if (_activeFilter == 'open_to_work') {
         queryBuilder = queryBuilder.eq('open_to_work', true);
+      } else if (_activeFilter == 'top_rated') {
+        // Solo mostrar músicos con mínimo de calificaciones
+        queryBuilder = queryBuilder.gte('total_calificaciones', _minRatingsForTopRated);
+      }
+      
+      // Aplicar filtros avanzados
+      if (_selectedLocation != null) {
+        queryBuilder = queryBuilder.eq('ubicacion_base', _selectedLocation!);
+      }
+      
+      // Filtros de instrumentos (array)
+      if (_selectedInstruments.isNotEmpty) {
+        // Filtrar músicos que tengan AL MENOS UNO de los instrumentos seleccionados
+        for (final instrument in _selectedInstruments) {
+          queryBuilder = queryBuilder.contains('instrumentos', [instrument]);
+        }
+      }
+      
+      // Filtros de géneros (array)
+      if (_selectedGenres.isNotEmpty) {
+        // Filtrar músicos que tengan AL MENOS UNO de los géneros seleccionados
+        for (final genre in _selectedGenres) {
+          queryBuilder = queryBuilder.contains('generos_musicales', [genre]);
+        }
       }
 
       // No mostrarse a uno mismo en búsquedas
@@ -96,7 +122,11 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
 
       final from = _page * _limit;
       final to = from + _limit - 1;
-      final response = await queryBuilder.range(from, to);
+      
+      // Aplicar ordenamiento según filtro activo
+      final response = _activeFilter == 'top_rated'
+          ? await queryBuilder.order('promedio_calificacion', ascending: false).range(from, to)
+          : await queryBuilder.range(from, to);
       
       if (mounted) {
         // Filtrar usuarios bloqueados y a uno mismo
@@ -222,6 +252,163 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
     }
   }
 
+  void _showAdvancedFilters() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).cardColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.9,
+          expand: false,
+          builder: (context, scrollController) => SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Filtros Avanzados',
+                      style: GoogleFonts.outfit(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: ThemeColors.primaryText(context),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        setState(() {
+                          _selectedInstruments.clear();
+                          _selectedGenres.clear();
+                          _selectedLocation = null;
+                        });
+                        setModalState(() {});
+                        _performSearch(_searchController.text);
+                      },
+                      child: Text('Limpiar', style: GoogleFonts.outfit(color: AppConstants.primaryColor)),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Instrumentos
+                Text('Instrumentos', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: ['Guitarra', 'Bajo', 'Batería', 'Teclado', 'Voz', 'Saxofón', 'Trompeta', 'Violín']
+                      .map((instrument) => _buildModalChip(
+                            label: instrument,
+                            isSelected: _selectedInstruments.contains(instrument),
+                            onTap: () {
+                              setModalState(() {
+                                if (_selectedInstruments.contains(instrument)) {
+                                  _selectedInstruments.remove(instrument);
+                                } else {
+                                  _selectedInstruments.add(instrument);
+                                }
+                              });
+                            },
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 24),
+
+                // Géneros
+                Text('Géneros Musicales', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: ['Rock', 'Jazz', 'Blues', 'Pop', 'Metal', 'Funk', 'Reggae', 'Clásica']
+                      .map((genre) => _buildModalChip(
+                            label: genre,
+                            isSelected: _selectedGenres.contains(genre),
+                            onTap: () {
+                              setModalState(() {
+                                if (_selectedGenres.contains(genre)) {
+                                  _selectedGenres.remove(genre);
+                                } else {
+                                  _selectedGenres.add(genre);
+                                }
+                              });
+                            },
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 24),
+
+                // Ubicación
+                Text('Ubicación', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: ['CDMX', 'Guadalajara', 'Monterrey', 'Puebla', 'Querétaro', 'Tijuana']
+                      .map((location) => _buildModalChip(
+                            label: location,
+                            isSelected: _selectedLocation == location,
+                            onTap: () {
+                              setModalState(() {
+                                _selectedLocation = _selectedLocation == location ? null : location;
+                              });
+                            },
+                          ))
+                      .toList(),
+                ),
+                const SizedBox(height: 32),
+
+                // Botón Aplicar
+                SizedBox(
+                  width: double.infinity,
+                  height: 54,
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      _performSearch(_searchController.text);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppConstants.primaryColor,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    ),
+                    child: Text(
+                      'Aplicar Filtros',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: Colors.black),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModalChip({required String label, required bool isSelected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Chip(
+        label: Text(label, style: GoogleFonts.outfit(fontSize: 12)),
+        backgroundColor: isSelected ? AppConstants.primaryColor : Colors.transparent,
+        labelStyle: TextStyle(
+          color: isSelected ? Colors.black : ThemeColors.secondaryText(context),
+          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+        ),
+        side: BorderSide(color: isSelected ? AppConstants.primaryColor : ThemeColors.divider(context)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -261,9 +448,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                         icon: Icon(Icons.search, color: ThemeColors.icon(context)),
                         suffixIcon: IconButton(
                           icon: const Icon(Icons.filter_list, color: AppConstants.accentColor),
-                          onPressed: () {
-                             // TODO: Abrir modal de filtros avanzados
-                          },
+                          onPressed: _showAdvancedFilters,
                         )
                       ),
                     ),
@@ -280,8 +465,7 @@ class _DiscoveryScreenState extends State<DiscoveryScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
                 children: [
                   _buildFilterChip('Todos', 'todos'),
-                  _buildFilterChip('Músicos', 'musicos'),
-                  _buildFilterChip('Bandas', 'bandas'),
+                  _buildFilterChip('Mejor Valorados', 'top_rated'),
                   _buildFilterChip('Open To Work', 'open_to_work'),
                 ],
               ),

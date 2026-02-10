@@ -3,13 +3,15 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Service for managing Supabase Realtime connections
-/// Handles message streaming, typing indicators, read receipts, and auto-reconnection
+/// Handles message streaming, typing indicators, read receipts, presence status, and auto-reconnection
 class RealtimeService {
   final SupabaseClient _supabase;
   RealtimeChannel? _channel;
+  RealtimeChannel? _presenceChannel;
   StreamController<Map<String, dynamic>>? _messageController;
   StreamController<TypingEvent>? _typingController;
   StreamController<RealtimeConnectionState>? _connectionController;
+  StreamController<PresenceEvent>? _presenceController;
   
   // Reconnection management
   Timer? _reconnectTimer;
@@ -263,7 +265,84 @@ class RealtimeService {
     _reconnectTimer?.cancel();
     unsubscribe();
     _connectionController?.close();
+    _presenceController?.close();
   }
+
+  /// Update user online status
+  /// [userId] - User ID to update status for
+  /// [isOnline] - Whether user is online or offline
+  Future<void> updateOnlineStatus(String userId, bool isOnline) async {
+    try {
+      await _supabase.from('perfiles').update({
+        'en_linea': isOnline,
+        'ultima_conexion': DateTime.now().toIso8601String(),
+      }).eq('id', userId); // Cambiado de 'user_id' a 'id'
+      
+      debugPrint('✅ Estado actualizado: ${isOnline ? "En línea" : "Desconectado"}');
+    } catch (e) {
+      debugPrint('❌ Error actualizando estado: $e');
+    }
+  }
+
+  /// Subscribe to presence updates for a specific user
+  /// [userId] - User ID to track presence for
+  /// Returns stream of presence events
+  Stream<PresenceEvent> listenPresence(String userId) {
+    _presenceController = StreamController<PresenceEvent>.broadcast();
+
+    // Subscribe to profile changes for this user
+    _presenceChannel = _supabase
+        .channel('presence:$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'perfiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id', // Cambiado de 'user_id' a 'id'
+            value: userId,
+          ),
+          callback: (payload) {
+            final record = payload.newRecord;
+            if (record != null) {
+              final isOnline = record['en_linea'] as bool? ?? false;
+              final lastSeen = record['ultima_conexion'] as String?;
+              
+              _presenceController?.add(PresenceEvent(
+                userId: userId,
+                isOnline: isOnline,
+                lastSeen: lastSeen != null ? DateTime.parse(lastSeen) : null,
+              ));
+            }
+          },
+        )
+        .subscribe();
+
+    return _presenceController!.stream;
+  }
+
+  /// Unsubscribe from presence updates
+  Future<void> unsubscribePresence() async {
+    if (_presenceChannel != null) {
+      await _supabase.removeChannel(_presenceChannel!);
+      _presenceChannel = null;
+    }
+    await _presenceController?.close();
+    _presenceController = null;
+  }
+}
+
+/// Presence event data class
+class PresenceEvent {
+  final String userId;
+  final bool isOnline;
+  final DateTime? lastSeen;
+
+  PresenceEvent({
+    required this.userId,
+    required this.isOnline,
+    this.lastSeen,
+  });
 }
 
 /// Connection state enum

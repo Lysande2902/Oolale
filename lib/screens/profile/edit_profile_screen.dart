@@ -43,14 +43,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   };
   String? _avatarUrl;
   File? _imageFile;
-  bool _isLoading = false;
+  bool _isMusician = true; // Default
+  bool _isLoading = true;
   bool _isSaving = false;
   static const int MAX_GEAR = 8;
   
   final List<String> _availableGenres = [
-    'Rock', 'Pop', 'Jazz', 'Blues', 'Metal', 'Reggae',
-    'Salsa', 'Cumbia', 'Electrónica', 'Hip Hop', 'R&B',
-    'Country', 'Folk', 'Clásica', 'Latina', 'Funk',
+    'Rock', 'Pop', 'Jazz', 'Blues', 'Metal', 'Punk', 'Indie', 'Alternative',
+    'Electronic', 'Hip Hop', 'Rap', 'Reggae', 'Ska', 'Funk', 'Soul', 'R&B',
+    'Country', 'Folk', 'Latin', 'Salsa', 'Cumbia', 'Reggaeton', 'Classical',
+    'Experimental', 'Ambient', 'Other'
   ];
 
   @override
@@ -80,6 +82,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         _rateController.text = (data['base_rate'] ?? 0).toString();
         _avatarUrl = data['foto_perfil'];
         
+        // Inferir si es músico
+        if ((_instrumentController.text.isEmpty) && 
+            (_experienceController.text == '0') && 
+            (data['base_rate'] == 0)) {
+           _isMusician = false;
+        } else {
+           _isMusician = true;
+        }
+
         // Cargar redes sociales
         if (data['social_links'] != null) {
           final socialLinks = data['social_links'] as Map<String, dynamic>;
@@ -114,10 +125,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         
         setState(() {
           _selectedGenres = (genresData as List).map((g) => g['genre'].toString()).toList();
+          if (_selectedGenres.isNotEmpty) _isMusician = true;
         });
       } catch (e) {
         ErrorHandler.logError('EditProfileScreen._loadGenres', e);
-        // No mostrar error, géneros son opcionales
       }
 
       // Cargar Gear (Mi Equipo)
@@ -131,10 +142,10 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         setState(() {
           _gearList = gearNames;
           _gearController.text = gearNames.join(', ');
+          if (_gearList.isNotEmpty) _isMusician = true;
         });
       } catch (e) {
         ErrorHandler.logError('EditProfileScreen._loadGear', e);
-        // No mostrar error, gear es opcional
       }
     } catch (e) {
       ErrorHandler.logError('EditProfileScreen._loadProfile', e);
@@ -207,11 +218,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         debugPrint('SAVE: Avatar uploaded: $finalAvatarUrl');
       }
 
-      // 1.1. Auto-agregar texto de equipo pendiente si existe
-      final pendingGear = _gearController.text.trim();
-      if (pendingGear.isNotEmpty && !_gearList.contains(pendingGear) && _gearList.length < MAX_GEAR) {
-        _gearList.add(pendingGear);
-        debugPrint('SAVE: Auto-added pending gear: $pendingGear');
+      // Si NO es músico, limpiar datos irrelevantes
+      if (!_isMusician) {
+        _instrumentController.clear();
+        _experienceController.text = '0';
+        _rateController.text = '0';
+        _gearController.clear();
+        _gearList.clear();
+        _selectedGenres.clear();
+        _availability.updateAll((key, value) => false);
+      } else {
+         // Auto-agregar texto de equipo pendiente si existe y es músico
+         final pendingGear = _gearController.text.trim();
+         if (pendingGear.isNotEmpty && !_gearList.contains(pendingGear) && _gearList.length < MAX_GEAR) {
+           _gearList.add(pendingGear);
+         }
       }
 
       // 2. Preparar social links
@@ -233,24 +254,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         'nombre_artistico': _nameController.text.trim(),
         'bio': _bioController.text.trim(),
         'ubicacion': _locationController.text.trim(),
-        'instrumento_principal': _instrumentController.text.trim(),
+        'instrumento_principal': _instrumentController.text.trim(), // Será vacío si !isMusician
         'foto_perfil': finalAvatarUrl,
         'years_experience': yearsExp,
         'base_rate': baseRate,
         'currency': 'MXN',
         'availability': _availability,
         'social_links': socialLinks,
+        'open_to_work': _isMusician, // Si no es músico, no está open to work por defecto
       }).eq('id', userId).select();
 
       debugPrint('SAVE: Profile updated successfully: $response');
 
       // 4. Actualizar géneros musicales
-      if (_selectedGenres.isNotEmpty) {
-        debugPrint('SAVE: Updating genres...');
-        // Borrar géneros existentes
-        await _supabase.from('generos_perfil').delete().eq('profile_id', userId);
-        
-        // Insertar nuevos géneros
+      // Siempre borramos, y si es músico insertamos los nuevos
+       debugPrint('SAVE: Updating genres...');
+       await _supabase.from('generos_perfil').delete().eq('profile_id', userId);
+       
+      if (_isMusician && _selectedGenres.isNotEmpty) {
         final genreRecords = _selectedGenres.map((genre) => {
           'profile_id': userId,
           'genre': genre,
@@ -260,14 +281,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         debugPrint('SAVE: Genres updated successfully');
       }
 
-      // 5. Actualizar Gear (Simplificado: Borrar y Reinsertar)
-      if (_gearList.isNotEmpty) {
-        debugPrint('SAVE: Updating gear list...');
+      // 5. Actualizar Gear
+      debugPrint('SAVE: Updating gear list...');
+      await _supabase.from('perfil_gear').delete().eq('perfil_id', userId);
+
+      if (_isMusician && _gearList.isNotEmpty) {
         if (_gearList.length > MAX_GEAR) {
           throw Exception('Máximo $MAX_GEAR instrumentos permitidos');
         }
-        
-        await _supabase.from('perfil_gear').delete().eq('perfil_id', userId);
         
         for (var name in _gearList) {
           var catalogItem = await _supabase
@@ -291,8 +312,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           });
         }
         debugPrint('SAVE: Gear updated successfully');
-      } else {
-        await _supabase.from('perfil_gear').delete().eq('perfil_id', userId);
       }
 
       debugPrint('SAVE: All updates completed successfully');
@@ -353,25 +372,52 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 30),
                 _buildSectionTitle('Información Básica'),
                 _buildTextField(_nameController, 'Nombre Artístico', Icons.person_outline),
+                const SizedBox(height: 10),
+                
+                // Toggle Músico vs Fan
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppConstants.primaryColor.withOpacity(0.3)),
+                  ),
+                  child: SwitchListTile(
+                    title: Text('¿Eres Músico / Banda?', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
+                    subtitle: Text('Activa esto si buscas toquines o quieres mostrar tu equipo.', style: GoogleFonts.outfit(fontSize: 12)),
+                    value: _isMusician,
+                    activeColor: AppConstants.primaryColor,
+                    onChanged: (val) {
+                      setState(() => _isMusician = val);
+                    },
+                  ),
+                ),
                 const SizedBox(height: 20),
-                _buildTextField(_instrumentController, '¿Qué tocas?', Icons.music_note_outlined),
-                const SizedBox(height: 20),
+
+                if (_isMusician) ...[
+                  _buildTextField(_instrumentController, '¿Qué tocas?', Icons.music_note_outlined),
+                  const SizedBox(height: 20),
+                ],
+                
                 _buildTextField(_locationController, 'Ubicación', Icons.location_on_outlined),
                 const SizedBox(height: 30),
-                _buildSectionTitle('Bio y Requisitos'),
+                _buildSectionTitle('Bio ${!_isMusician ? 'e Intereses' : 'y Requisitos'}'),
                 _buildTextField(_bioController, 'Sobre ti...', Icons.notes, maxLines: 3),
                 const SizedBox(height: 30),
-                _buildSectionTitle('Géneros Musicales'),
-                _buildGenresSection(),
-                const SizedBox(height: 30),
-                _buildSectionTitle('Experiencia y Disponibilidad'),
-                _buildTextField(_experienceController, 'Años de experiencia', Icons.work_outline),
-                const SizedBox(height: 20),
-                _buildAvailabilitySection(),
-                const SizedBox(height: 30),
-                _buildSectionTitle('Tarifa Base (MXN)'),
-                _buildTextField(_rateController, 'Precio por evento', Icons.attach_money),
-                const SizedBox(height: 30),
+
+                if (_isMusician) ...[
+                  _buildSectionTitle('Géneros Musicales'),
+                  _buildGenresSection(),
+                  const SizedBox(height: 30),
+                  _buildSectionTitle('Experiencia y Disponibilidad'),
+                  _buildTextField(_experienceController, 'Años de experiencia', Icons.work_outline),
+                  const SizedBox(height: 20),
+                  _buildAvailabilitySection(),
+                  const SizedBox(height: 30),
+                  _buildSectionTitle('Tarifa Base (MXN)'),
+                  _buildTextField(_rateController, 'Precio por evento', Icons.attach_money),
+                  const SizedBox(height: 30),
+                ],
+
                 _buildSectionTitle('Redes Sociales'),
                 _buildTextField(_instagramController, 'Instagram (URL)', Icons.camera_alt),
                 const SizedBox(height: 20),
@@ -379,9 +425,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 const SizedBox(height: 20),
                 _buildTextField(_spotifyController, 'Spotify (URL)', Icons.music_note),
                 const SizedBox(height: 30),
-                _buildSectionTitle('Mis Instrumentos (Máx. 8)'),
-                _buildGearSection(),
-                const SizedBox(height: 40),
+
+                if (_isMusician) ...[
+                  _buildSectionTitle('Mis Instrumentos (Máx. 8)'),
+                  _buildGearSection(),
+                  const SizedBox(height: 40),
+                ],
                 _buildSaveButton(),
               ],
             ),

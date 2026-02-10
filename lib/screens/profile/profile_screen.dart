@@ -76,7 +76,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final seguidoresData = await _supabase
           .from('conexiones')
           .select()
-          .eq('conectado_id', user.id)
+          .eq('usuario_id', user.id)
           .eq('estatus', 'accepted');
 
       final musicData = await _supabase
@@ -163,7 +163,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildActionButtons(),
                   const SizedBox(height: 30),
                   // Instrumento Principal
-                  if (_profileData?['instrumento_principal'] != null) ...[
+                  if (_profileData?['instrumento_principal'] != null && 
+                      _profileData!['instrumento_principal'].toString().trim().isNotEmpty) ...[
                     _buildInstrumentCard(),
                     const SizedBox(height: 30),
                   ],
@@ -181,15 +182,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                   
                   // Años de experiencia y tarifa
-                  if (_profileData?['years_experience'] != null && _profileData!['years_experience'] > 0 ||
-                      _profileData?['base_rate'] != null && _profileData!['base_rate'] > 0) ...[
+                  if ((_profileData?['years_experience'] != null && _profileData!['years_experience'] > 0) ||
+                      (_profileData?['base_rate'] != null && _profileData!['base_rate'] > 0)) ...[
                     _buildExperienceAndRateRow(),
                     const SizedBox(height: 30),
                   ],
                   
                   // Disponibilidad
                   if (_profileData?['availability'] != null && 
-                      _profileData!['availability'].toString() != '{}') ...[
+                      _profileData!['availability'].toString() != '{}' &&
+                      _profileData!['availability'].values.any((e) => e == true)) ...[
                     _buildSectionTitle('Disponibilidad'),
                     const SizedBox(height: 10),
                     _buildAvailabilityCard(),
@@ -198,7 +200,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   
                   // Redes sociales
                   if (_profileData?['social_links'] != null && 
-                      _profileData!['social_links'].toString() != '{}') ...[
+                      _profileData!['social_links'].toString() != '{}' &&
+                      (_profileData!['social_links'] as Map).isNotEmpty) ...[
                     _buildSectionTitle('Redes Sociales'),
                     const SizedBox(height: 10),
                     _buildSocialLinksCard(),
@@ -207,10 +210,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   
                   _buildPortfolioButton(),
                   const SizedBox(height: 30),
-                  _buildSectionTitle('Mi Equipo'),
-                  const SizedBox(height: 10),
-                  _buildGearSection(),
-                  const SizedBox(height: 100),
+                  
+                  // Mi Equipo
+                  if (_instrumentos.isNotEmpty) ...[
+                    _buildSectionTitle('Mi Equipo'),
+                    const SizedBox(height: 10),
+                    _buildGearSection(),
+                    const SizedBox(height: 100),
+                  ],
                 ],
               ),
             ),
@@ -224,7 +231,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     
     return Container(
-      height: 300,
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 300),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
@@ -242,6 +250,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: SafeArea(
         child: Stack(
+          alignment: Alignment.center,
           children: [
             // Header Buttons
             Positioned(
@@ -253,9 +262,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
             // Profile content
-            Center(
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 20),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   FadeInDown(
                     child: Container(

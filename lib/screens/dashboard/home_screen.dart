@@ -766,7 +766,7 @@ class _StreamViewState extends State<_StreamView> {
                                   flex: 4,
                                   child: Container(
                                     width: double.infinity,
-                                    padding: const EdgeInsets.all(12),
+                                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                                     decoration: BoxDecoration(
                                       color: Theme.of(context).brightness == Brightness.dark
                                           ? Theme.of(context).cardColor

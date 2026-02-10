@@ -76,14 +76,16 @@ class NotificationService {
               // Extraer datos de la notificación
               final newRecord = payload.newRecord;
               if (newRecord != null) {
+                final notificationId = newRecord['id'] as String?;
                 final title = newRecord['title'] as String?;
                 final message = newRecord['message'] as String?;
                 final type = newRecord['type'] as String?;
                 final data = newRecord['data'] as Map<String, dynamic>?;
 
-                if (title != null && message != null) {
+                if (title != null && message != null && notificationId != null) {
                   // Mostrar notificación local automáticamente
                   _showLocalNotificationFromData(
+                    notificationId: notificationId,
                     title: title,
                     body: message,
                     type: type ?? 'general',
@@ -103,6 +105,7 @@ class NotificationService {
 
   // 🆕 Mostrar notificación local desde datos de Supabase
   static Future<void> _showLocalNotificationFromData({
+    required String notificationId,
     required String title,
     required String body,
     required String type,
@@ -110,14 +113,16 @@ class NotificationService {
   }) async {
     try {
       debugPrint('🔔 Mostrando notificación local desde Realtime...');
+      debugPrint('   ID: $notificationId');
       debugPrint('   Título: $title');
       debugPrint('   Cuerpo: $body');
       debugPrint('   Tipo: $type');
 
-      final notificationId = DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      // Usar el hash del ID de la notificación para poder cancelarla después
+      final notificationHash = notificationId.hashCode;
 
       await _localNotifications.show(
-        notificationId,
+        notificationHash,
         title,
         body,
         const NotificationDetails(
@@ -139,7 +144,7 @@ class NotificationService {
             sound: 'default',
           ),
         ),
-        payload: '$type|${data.toString()}',
+        payload: '$notificationId|$type|${data.toString()}',
       );
 
       debugPrint('✅ Notificación local mostrada exitosamente desde Realtime');
@@ -353,10 +358,15 @@ class NotificationService {
     debugPrint('👆 Notificación local tocada: ${response.payload}');
     
     if (response.payload != null) {
-      // El payload tiene formato: "tipo|{data}"
+      // El payload tiene formato: "notificationId|tipo|{data}"
       final parts = response.payload!.split('|');
       if (parts.length >= 2) {
-        final type = parts[0];
+        final notificationId = parts[0];
+        final type = parts[1];
+        
+        // Marcar como leída automáticamente al tocar
+        markAsRead(notificationId);
+        
         // Llamar al callback de navegación si está configurado
         if (onNotificationTap != null) {
           onNotificationTap!(type, {});
@@ -410,8 +420,23 @@ class NotificationService {
           .eq('id', notificationId);
       
       debugPrint('✅ Notificación marcada como leída: $notificationId');
+      
+      // Limpiar notificación de la bandeja del sistema
+      await _clearSystemNotification(notificationId);
     } catch (e) {
       debugPrint('❌ Error marcando como leída: $e');
+    }
+  }
+  
+  // Limpiar notificación específica de la bandeja del sistema
+  static Future<void> _clearSystemNotification(String notificationId) async {
+    try {
+      // Generar el mismo ID que se usó al mostrar la notificación
+      final notificationHash = notificationId.hashCode;
+      await _localNotifications.cancel(notificationHash);
+      debugPrint('🧹 Notificación limpiada de la bandeja: $notificationId');
+    } catch (e) {
+      debugPrint('❌ Error limpiando notificación de la bandeja: $e');
     }
   }
 
@@ -428,6 +453,10 @@ class NotificationService {
           .eq('leido', false);
       
       debugPrint('✅ Todas las notificaciones marcadas como leídas');
+      
+      // Limpiar todas las notificaciones de la bandeja del sistema
+      await _localNotifications.cancelAll();
+      debugPrint('🧹 Todas las notificaciones limpiadas de la bandeja');
     } catch (e) {
       debugPrint('❌ Error marcando todas como leídas: $e');
     }

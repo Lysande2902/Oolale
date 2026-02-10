@@ -110,10 +110,9 @@ class _InviteMusiciansScreenState extends State<InviteMusiciansScreen> {
       }).toList();
     });
   }
-        return matchesSearch && matchesInstrument;
-      }).toList();
-    });
-  }
+  
+  // Alias para _filterMusicians (usado en el diálogo de filtros)
+  void _applyFilters() => _filterMusicians();
 
   void _toggleSelection(String musicianId) {
     setState(() {
@@ -464,14 +463,54 @@ class _InviteMusiciansScreenState extends State<InviteMusiciansScreen> {
   }
 
   void _showInstrumentFilter() {
-    // TODO: Implement instrument filter dialog
-    // For now, just show a simple dialog
+    final instruments = ['Guitarra', 'Bajo', 'Batería', 'Teclado', 'Voz', 'Saxofón', 'Trompeta', 'Violín', 'Todos'];
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: Theme.of(context).cardColor,
-        title: Text('Filtrar por instrumento', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
-        content: Text('Funcionalidad próximamente', style: GoogleFonts.outfit()),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text(
+          'Filtrar por instrumento',
+          style: GoogleFonts.outfit(
+            fontWeight: FontWeight.bold,
+            color: ThemeColors.primaryText(context),
+          ),
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: instruments.length,
+            itemBuilder: (context, index) {
+              final instrument = instruments[index];
+              final isSelected = instrument == 'Todos' 
+                  ? _filterInstrument == null 
+                  : _filterInstrument == instrument;
+              
+              return ListTile(
+                title: Text(
+                  instrument,
+                  style: GoogleFonts.outfit(
+                    color: isSelected ? AppConstants.primaryColor : ThemeColors.primaryText(context),
+                    fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
+                ),
+                leading: Icon(
+                  isSelected ? Icons.check_circle : Icons.circle_outlined,
+                  color: isSelected ? AppConstants.primaryColor : ThemeColors.iconSecondary(context),
+                ),
+                onTap: () {
+                  setState(() {
+                    _filterInstrument = instrument == 'Todos' ? null : instrument;
+                    _applyFilters();
+                  });
+                  Navigator.pop(context);
+                },
+              );
+            },
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),

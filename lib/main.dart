@@ -13,6 +13,7 @@ import 'providers/theme_provider.dart';
 import 'providers/accessibility_provider.dart';
 import 'providers/connectivity_provider.dart';
 import 'services/notification_service.dart';
+import 'services/presence_service.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/register_screen.dart';
 import 'screens/auth/forgot_password_screen.dart';
@@ -20,6 +21,7 @@ import 'screens/dashboard/home_screen.dart';
 import 'screens/notifications/notifications_screen.dart';
 import 'screens/events/create_event_screen.dart';
 import 'screens/events/gig_detail_screen.dart';
+import 'screens/events/event_group_chat_screen.dart';
 import 'screens/connections/connections_screen.dart';
 import 'screens/reports/create_report_screen.dart';
 import 'screens/settings/settings_screen.dart';
@@ -46,6 +48,8 @@ import 'screens/settings/privacy_settings_screen.dart';
 import 'screens/settings/account_settings_screen.dart';
 import 'screens/settings/suspend_account_screen.dart';
 import 'screens/settings/delete_account_screen.dart';
+import 'screens/settings/wallet_screen.dart';
+import 'screens/settings/language_screen.dart';
 import 'screens/settings/cache_settings_screen.dart';
 import 'screens/settings/font_size_screen.dart';
 import 'screens/settings/accessibility_screen.dart';
@@ -87,6 +91,9 @@ Future<void> main() async {
     
     // Inicializar NotificationService
     await NotificationService.initialize();
+    
+    // Inicializar PresenceService
+    await PresenceService.initialize();
     
     runApp(const MyApp());
   } catch (e) {
@@ -131,8 +138,53 @@ class ErrorApp extends StatelessWidget {
   }
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    debugPrint('🔄 App lifecycle changed: $state');
+    
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App volvió al foreground
+        PresenceService.setOnline();
+        break;
+      case AppLifecycleState.paused:
+        // App fue a background
+        PresenceService.setOffline();
+        break;
+      case AppLifecycleState.inactive:
+        // App está inactiva (transición)
+        break;
+      case AppLifecycleState.detached:
+        // App se está cerrando
+        PresenceService.setOffline();
+        break;
+      case AppLifecycleState.hidden:
+        // App está oculta
+        break;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +272,7 @@ class _AppRouter extends StatelessWidget {
           path: '/create-report',
           builder: (context, state) {
             final extra = state.extra as Map<String, dynamic>? ?? {};
-            final reportedUserId = extra['reportedUserId'] as int? ?? 0;
+            final reportedUserId = extra['reportedUserId']?.toString() ?? '';
             final reportedUserName = extra['reportedUserName'] as String? ?? 'User';
             return CreateReportScreen(
               reportedUserId: reportedUserId,
@@ -244,7 +296,7 @@ class _AppRouter extends StatelessWidget {
           path: '/messages/:id',
           builder: (context, state) {
             final userId = state.pathParameters['id'] ?? '';
-            final userName = state.extra as String? ?? 'Artist';
+            final userName = state.extra as String?; // Ahora es opcional
             return ChatScreen(userId: userId, userName: userName);
           },
         ),
@@ -257,6 +309,15 @@ class _AppRouter extends StatelessWidget {
           builder: (context, state) {
             final id = int.tryParse(state.pathParameters['id'] ?? '0') ?? 0;
             return GigDetailScreen(gigId: id);
+          },
+        ),
+        GoRoute(
+          path: '/event-chat/:eventId',
+          builder: (context, state) {
+            final eventId = int.tryParse(state.pathParameters['eventId'] ?? '0') ?? 0;
+            final extra = state.extra as Map<String, dynamic>? ?? {};
+            final eventTitle = extra['eventTitle'] as String? ?? 'Chat del Evento';
+            return EventGroupChatScreen(eventId: eventId, eventTitle: eventTitle);
           },
         ),
         GoRoute(
@@ -346,6 +407,14 @@ class _AppRouter extends StatelessWidget {
           builder: (context, state) => const DeleteAccountScreen(),
         ),
         GoRoute(
+          path: '/wallet',
+          builder: (context, state) => const WalletScreen(),
+        ),
+        GoRoute(
+          path: '/language',
+          builder: (context, state) => const LanguageScreen(),
+        ),
+        GoRoute(
           path: '/settings/cache',
           builder: (context, state) => const CacheSettingsScreen(),
         ),
@@ -385,6 +454,7 @@ class _AppRouter extends StatelessWidget {
     );
 
     final themeProvider = Provider.of<ThemeProvider>(context);
+    final accessibilityProvider = Provider.of<AccessibilityProvider>(context);
 
     // 🆕 Configurar callback de navegación para notificaciones
     NotificationService.onNotificationTap = (String type, Map<String, dynamic> data) {
@@ -443,6 +513,52 @@ class _AppRouter extends StatelessWidget {
         title: AppConstants.appName,
         debugShowCheckedModeBanner: false,
         themeMode: themeProvider.themeMode,
+        builder: (context, child) {
+          // Aplicar escala de fuente globalmente mediante MediaQuery
+          // Esto asegura que incluso los estilos hardcoded (GoogleFonts.outfit(fontSize: 20)) se escalen
+          final mediaQuery = MediaQuery.of(context);
+          final scale = accessibilityProvider.fontScale;
+          
+          // Global Error Widget Customization
+          ErrorWidget.builder = (FlutterErrorDetails details) {
+            return Scaffold(
+              backgroundColor: AppConstants.backgroundColor,
+              body: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.warning_amber_rounded, size: 64, color: AppConstants.primaryColor),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Ups, algo salió mal',
+                        style: GoogleFonts.outfit(
+                          fontSize: 24, 
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Hemos detectado un error inesperado. Por favor, reinicia la app o contacta a soporte.',
+                        textAlign: TextAlign.center,
+                        style: GoogleFonts.outfit(color: Colors.white70),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          };
+          
+          return MediaQuery(
+            data: mediaQuery.copyWith(
+              textScaler: TextScaler.linear(scale),
+            ),
+            child: child!,
+          );
+        },
       theme: ThemeData(
         useMaterial3: true,
         brightness: Brightness.light,
@@ -491,7 +607,10 @@ class _AppRouter extends StatelessWidget {
         ),
         chipTheme: ChipThemeData(
           backgroundColor: AppConstants.bgLightSecondary,
-          labelStyle: GoogleFonts.outfit(color: AppConstants.textLightPrimary, fontSize: 13),
+          labelStyle: GoogleFonts.outfit(
+            color: AppConstants.textLightPrimary, 
+            fontSize: 13,
+          ),
           secondaryLabelStyle: GoogleFonts.outfit(color: Colors.black, fontWeight: FontWeight.bold),
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -503,13 +622,19 @@ class _AppRouter extends StatelessWidget {
             foregroundColor: Colors.black,
             elevation: 0,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            textStyle: GoogleFonts.outfit(fontWeight: FontWeight.bold),
+            textStyle: GoogleFonts.outfit(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Colors.white,
-          hintStyle: TextStyle(color: AppConstants.textLightSecondary.withOpacity(0.4)),
+          hintStyle: TextStyle(
+            color: AppConstants.textLightSecondary.withOpacity(0.4),
+            fontSize: 16,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
             borderSide: const BorderSide(color: AppConstants.borderLight),
@@ -563,10 +688,36 @@ class _AppRouter extends StatelessWidget {
             side: const BorderSide(color: AppConstants.borderColor, width: 1),
           ),
         ),
+        chipTheme: ChipThemeData(
+          backgroundColor: AppConstants.bgDarkSecondary,
+          labelStyle: GoogleFonts.outfit(
+            color: AppConstants.textPrimary,
+            fontSize: 13,
+          ),
+          secondaryLabelStyle: GoogleFonts.outfit(color: Colors.white, fontWeight: FontWeight.bold),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          side: const BorderSide(color: AppConstants.borderColor),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppConstants.primaryColor,
+            foregroundColor: Colors.black,
+            elevation: 0,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            textStyle: GoogleFonts.outfit(
+              fontWeight: FontWeight.bold,
+              fontSize: 14,
+            ),
+          ),
+        ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: AppConstants.bgDarkSecondary,
-          hintStyle: TextStyle(color: AppConstants.textSecondary.withOpacity(0.3)),
+          hintStyle: TextStyle(
+            color: AppConstants.textSecondary.withOpacity(0.3),
+            fontSize: 16,
+          ),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
             borderSide: BorderSide.none,

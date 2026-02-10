@@ -27,16 +27,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _obscureConfirmPassword = true;
   bool _acceptTerms = false;
   
-  String _selectedRole = 'musico';
-  final Map<String, Map<String, dynamic>> _roles = {
-    'musico': {'label': 'Músico', 'icon': Icons.music_note_rounded},
-    'banda': {'label': 'Banda', 'icon': Icons.groups_rounded},
-    'productor': {'label': 'Productor', 'icon': Icons.album_rounded},
-    'promotor': {'label': 'Promotor', 'icon': Icons.campaign_rounded},
-    'staff': {'label': 'Staff', 'icon': Icons.work_rounded},
-    'fan': {'label': 'Fan', 'icon': Icons.favorite_rounded},
-  };
-
   // Password strength
   double _passwordStrength = 0.0;
   String _passwordStrengthText = '';
@@ -466,8 +456,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     
     try {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      // Default to 'musico' as specific roles are no longer used during registration
-      final success = await authProvider.register(email, password, name, 'musico');
+      // Registramos como usuario genérico ('user') ya que los roles específicos fueron eliminados
+      final success = await authProvider.register(email, password, name, 'user');
 
       if (mounted) {
         setState(() => _isLoading = false);

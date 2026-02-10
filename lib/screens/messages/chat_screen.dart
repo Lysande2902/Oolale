@@ -20,9 +20,9 @@ import '../reports/report_content_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   final String userId; 
-  final String userName; 
+  final String? userName; // Ahora es opcional
 
-  const ChatScreen({super.key, required this.userId, required this.userName});
+  const ChatScreen({super.key, required this.userId, this.userName});
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -32,6 +32,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final _supabase = Supabase.instance.client;
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  final FocusNode _messageFocusNode = FocusNode(); // NUEVO: Para mantener el foco del teclado
   
   late RealtimeService _realtimeService;
   late MediaService _mediaService;
@@ -47,12 +48,20 @@ class _ChatScreenState extends State<ChatScreen> {
   StreamSubscription? _typingSubscription;
   StreamSubscription? _connectionSubscription;
   RealtimeConnectionState _realtimeConnectionState = RealtimeConnectionState.disconnected;
+  
+  // Información del usuario cargada desde BD
+  String _loadedUserName = '';
+  String? _loadedUserPhoto;
+  bool _userIsOnline = false; // Estado real del usuario desde BD
+  DateTime? _userLastSeen; // Última conexión del usuario
+  RealtimeChannel? _presenceChannel; // Canal de Realtime para escuchar cambios de presencia
 
   @override
   void initState() {
     super.initState();
     _realtimeService = RealtimeService(_supabase);
     _mediaService = MediaService(_supabase);
+    _loadUserInfo(); // Cargar info del usuario
     _checkConnection();
     
     // Listen for typing changes
@@ -65,8 +74,10 @@ class _ChatScreenState extends State<ChatScreen> {
     _typingTimer?.cancel();
     _typingSubscription?.cancel();
     _connectionSubscription?.cancel();
+    _presenceChannel?.unsubscribe(); // Desuscribir del canal de presencia
     _messageController.removeListener(_onTypingChanged);
     _messageController.dispose();
+    _messageFocusNode.dispose(); // NUEVO: Liberar el FocusNode
     _scrollController.dispose();
     super.dispose();
   }
@@ -80,6 +91,88 @@ class _ChatScreenState extends State<ChatScreen> {
     
     // Send typing indicator
     _realtimeService.sendTypingIndicator(conversationId, isTyping);
+  }
+
+  // Cargar información del usuario desde la base de datos
+  Future<void> _loadUserInfo() async {
+    try {
+      // Si ya tenemos el nombre, usarlo
+      if (widget.userName != null && widget.userName!.isNotEmpty) {
+        setState(() {
+          _loadedUserName = widget.userName!;
+        });
+      }
+      
+      // Cargar desde BD incluyendo estado de presencia
+      final data = await _supabase
+          .from('perfiles')
+          .select('nombre_artistico, foto_perfil, en_linea, ultima_conexion')
+          .eq('id', widget.userId) // Cambiado de 'user_id' a 'id'
+          .single();
+      
+      if (mounted) {
+        setState(() {
+          _loadedUserName = data['nombre_artistico'] ?? widget.userName ?? 'Usuario';
+          _userIsOnline = data['en_linea'] ?? false;
+          
+          final lastSeenStr = data['ultima_conexion'];
+          if (lastSeenStr != null) {
+            _userLastSeen = DateTime.parse(lastSeenStr);
+          }
+          
+          final fotoPerfilPath = data['foto_perfil'];
+          
+          // Construir URL completa de foto de perfil
+          if (fotoPerfilPath != null && fotoPerfilPath.toString().isNotEmpty) {
+            if (fotoPerfilPath.toString().startsWith('http')) {
+              _loadedUserPhoto = fotoPerfilPath.toString();
+            } else {
+              _loadedUserPhoto = _supabase.storage.from('avatars').getPublicUrl(fotoPerfilPath.toString());
+            }
+          }
+        });
+        
+        // Configurar listener de presencia en tiempo real
+        _setupPresenceListener();
+      }
+    } catch (e) {
+      debugPrint('Error cargando info del usuario: $e');
+      if (mounted) {
+        setState(() {
+          _loadedUserName = widget.userName ?? 'Usuario';
+        });
+      }
+    }
+  }
+  
+  // Configurar listener para cambios de presencia del usuario
+  void _setupPresenceListener() {
+    _presenceChannel = _supabase
+        .channel('presence:${widget.userId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'perfiles',
+          filter: PostgresChangeFilter(
+            type: PostgresChangeFilterType.eq,
+            column: 'id',
+            value: widget.userId,
+          ),
+          callback: (payload) {
+            final newRecord = payload.newRecord;
+            if (newRecord != null && mounted) {
+              setState(() {
+                _userIsOnline = newRecord['en_linea'] ?? false;
+                final lastSeenStr = newRecord['ultima_conexion'];
+                if (lastSeenStr != null) {
+                  _userLastSeen = DateTime.parse(lastSeenStr);
+                }
+              });
+              debugPrint('🔄 Estado de presencia actualizado: ${_userIsOnline ? "En línea" : "Desconectado"}');
+            }
+          },
+        )
+        .subscribe();
   }
 
   String _getConversationId(String userId1, String userId2) {
@@ -168,11 +261,23 @@ class _ChatScreenState extends State<ChatScreen> {
         if (mounted) {
           // Optimización: Búsqueda O(1) con Set
           if (!_messageIds.contains(message.id)) {
+            // Guardar el estado del foco antes de setState
+            final hadFocus = _messageFocusNode.hasFocus;
+            
             setState(() {
               _messageIds.add(message.id);
               _messages.add(message);
               _scrollToBottom();
             });
+            
+            // Restaurar el foco después de setState si lo tenía
+            if (hadFocus) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && !_messageFocusNode.hasFocus) {
+                  _messageFocusNode.requestFocus();
+                }
+              });
+            }
             
             // Mark as read if from other user
             if (message.senderId == widget.userId) {
@@ -281,12 +386,25 @@ class _ChatScreenState extends State<ChatScreen> {
         }
       }
 
-      // Notificación en segundo plano (sin esperar respuesta para evitar lag)
-      _supabase.rpc('handle_new_message_notification', params: {
-        'p_sender_id': myId,
-        'p_receiver_id': widget.userId,
-        'p_content': text
-      }).then((_) {}).catchError((e) => debugPrint('Error notification: $e'));
+      // Notificación en segundo plano (Reemplazando RPC por Insert directo para robustez)
+      try {
+        final myProfile = await _supabase
+            .from('perfiles')
+            .select('nombre_artistico')
+            .eq('id', myId)
+            .single();
+
+        await _supabase.from('notificaciones').insert({
+          'user_id': widget.userId,
+          'tipo': 'new_message',
+          'titulo': 'Nuevo mensaje',
+          'mensaje': '${myProfile['nombre_artistico']} te envió un mensaje',
+          'leido': false,
+          'data': {'sender_id': myId, 'conversation_id': widget.userId},
+        });
+      } catch (notifError) {
+        debugPrint('Error creating notification manually: $notifError');
+      }
     } catch (e) {
       ErrorHandler.logError('ChatScreen._sendMessage', e);
       if (mounted) {
@@ -739,7 +857,8 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
             onPressed: () => Navigator.pop(context),
           ),
-          title: Text(widget.userName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          title: Text(_loadedUserName.isNotEmpty ? _loadedUserName : 'Cargando...', 
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
         ),
         body: const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor)),
       );
@@ -778,7 +897,8 @@ class _ChatScreenState extends State<ChatScreen> {
           icon: Icon(Icons.arrow_back, color: ThemeColors.icon(context)),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(widget.userName, style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+        title: Text(_loadedUserName.isNotEmpty ? _loadedUserName : 'Usuario', 
+                    style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
       ),
       body: Center(
         child: Padding(
@@ -803,7 +923,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                'Debes estar conectado con ${widget.userName} para poder enviar mensajes.',
+                'Debes estar conectado con ${_loadedUserName.isNotEmpty ? _loadedUserName : "este usuario"} para poder enviar mensajes.',
                 style: GoogleFonts.outfit(
                   fontSize: 14,
                   color: ThemeColors.secondaryText(context),
@@ -842,8 +962,13 @@ class _ChatScreenState extends State<ChatScreen> {
           CircleAvatar(
             radius: 18,
             backgroundColor: AppConstants.primaryColor.withOpacity(0.1),
-            child: Text(
-              widget.userName.substring(0, 1).toUpperCase(), 
+            child: _loadedUserPhoto != null
+                ? CircleAvatar(
+                    radius: 20,
+                    backgroundImage: NetworkImage(_loadedUserPhoto!),
+                  )
+                : Text(
+                    _loadedUserName.isNotEmpty ? _loadedUserName.substring(0, 1).toUpperCase() : 'U', 
               style: const TextStyle(
                 color: AppConstants.primaryColor, 
                 fontSize: 14, 
@@ -858,7 +983,7 @@ class _ChatScreenState extends State<ChatScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.userName,
+                  _loadedUserName.isNotEmpty ? _loadedUserName : 'Usuario',
                   style: GoogleFonts.outfit(
                     color: ThemeColors.primaryText(context), 
                     fontWeight: FontWeight.bold, 
@@ -894,7 +1019,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   builder: (_) => ReportContentScreen(
                     contentType: 'message',
                     contentId: widget.userId,
-                    contentTitle: 'Conversación con ${widget.userName}',
+                    contentTitle: 'Conversación con ${_loadedUserName.isNotEmpty ? _loadedUserName : "usuario"}',
                   ),
                 ),
               );
@@ -918,53 +1043,59 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildConnectionIndicator() {
-    String text;
-    Color color;
-    
-    switch (_realtimeConnectionState) {
-      case RealtimeConnectionState.connected:
-        text = 'En línea';
-        color = Colors.green;
-        break;
-      case RealtimeConnectionState.connecting:
-        text = 'Conectando...';
-        color = Colors.orange;
-        break;
-      case RealtimeConnectionState.error:
-        text = 'Error de conexión';
-        color = Colors.red;
-        break;
-      case RealtimeConnectionState.failed:
-        text = 'Desconectado';
-        color = Colors.red;
-        break;
-      case RealtimeConnectionState.disconnected:
-      default:
-        return const SizedBox.shrink();
+    // Mostrar estado real del usuario desde la BD
+    if (_userIsOnline) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: const BoxDecoration(
+              color: Colors.green,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'En línea',
+            style: GoogleFonts.outfit(
+              color: Colors.green,
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      );
+    } else if (_userLastSeen != null) {
+      // Mostrar última vez visto
+      final now = DateTime.now();
+      final difference = now.difference(_userLastSeen!);
+      
+      String lastSeenText;
+      if (difference.inMinutes < 1) {
+        lastSeenText = 'Hace un momento';
+      } else if (difference.inMinutes < 60) {
+        lastSeenText = 'Hace ${difference.inMinutes} min';
+      } else if (difference.inHours < 24) {
+        lastSeenText = 'Hace ${difference.inHours} h';
+      } else if (difference.inDays < 7) {
+        lastSeenText = 'Hace ${difference.inDays} d';
+      } else {
+        lastSeenText = 'Hace tiempo';
+      }
+      
+      return Text(
+        lastSeenText,
+        style: GoogleFonts.outfit(
+          color: ThemeColors.secondaryText(context),
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+        ),
+      );
     }
     
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 6,
-          height: 6,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
-        ),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: GoogleFonts.outfit(
-            color: color,
-            fontSize: 11,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
-    );
+    return const SizedBox.shrink();
   }
 
   Widget _buildEmptyState() {
@@ -989,7 +1120,7 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Row(
         children: [
           Text(
-            '${widget.userName} está escribiendo',
+            '${_loadedUserName.isNotEmpty ? _loadedUserName : "El usuario"} está escribiendo',
             style: GoogleFonts.outfit(
               color: ThemeColors.secondaryText(context),
               fontSize: 12,
@@ -1185,6 +1316,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     ),
                     child: TextField(
                       controller: _messageController,
+                      focusNode: _messageFocusNode, // NUEVO: Mantener el foco
                       enabled: !_isUploading,
                       style: GoogleFonts.outfit(color: ThemeColors.primaryText(context)),
                       decoration: InputDecoration(
@@ -1404,12 +1536,16 @@ class _MessageBubble extends StatelessWidget {
                     Icon(Icons.play_circle_fill, 
                       color: isMe ? Colors.black : AppConstants.primaryColor, size: 38), // Icono más grande
                     const SizedBox(width: 10),
-                    Text('Mensaje de voz', 
-                      style: GoogleFonts.outfit(
-                        color: isMe ? Colors.black : ThemeColors.primaryText(context),
-                        fontWeight: FontWeight.bold, // Texto del audio en negrita
-                        fontSize: 15,
-                      )),
+                    Flexible(
+                      child: Text('Mensaje de voz', 
+                        style: GoogleFonts.outfit(
+                          color: isMe ? Colors.black : ThemeColors.primaryText(context),
+                          fontWeight: FontWeight.bold, // Texto del audio en negrita
+                          fontSize: 15,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                   ],
                 )
               else

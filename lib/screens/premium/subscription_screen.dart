@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:animate_do/animate_do.dart';
+import 'package:provider/provider.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/payment_service.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 
@@ -354,7 +357,10 @@ class PremiumScreen extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () => _showPaymentDialog(context),
+                    onPressed: () {
+                      final amount = isPopular ? 990.0 : 99.0;
+                      _showPaymentDialog(context, title, amount);
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: isPopular ? AppConstants.accentColor : AppConstants.primaryColor,
                       foregroundColor: Colors.black,
@@ -429,36 +435,289 @@ class PremiumScreen extends StatelessWidget {
     );
   }
 
-  void _showPaymentDialog(BuildContext context) {
-    showDialog(
+  void _showPaymentDialog(BuildContext context, String planName, double amount) {
+     showModalBottomSheet(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Theme.of(context).cardColor,
-        title: Text('Próximamente', style: TextStyle(color: ThemeColors.primaryText(context))),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.construction_rounded, color: AppConstants.accentColor, size: 60),
-            const SizedBox(height: 16),
-            Text(
-              'Estamos integrando los métodos de pago',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: ThemeColors.secondaryText(context)),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'MercadoPago • PayPal • Stripe',
-              style: GoogleFonts.outfit(color: AppConstants.primaryColor, fontSize: 12),
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _PaymentModal(planName: planName, amount: amount),
+    );
+  }
+}
+
+class _PaymentModal extends StatefulWidget {
+  final String planName;
+  final double amount;
+  
+  const _PaymentModal({required this.planName, required this.amount});
+
+  @override
+  State<_PaymentModal> createState() => _PaymentModalState();
+}
+
+class _PaymentModalState extends State<_PaymentModal> {
+  bool _isLoading = false;
+  bool _isWaitingForPayment = false; // Estado cuando el usuario está en el navegador
+  String _currentProvider = '';
+
+  Future<void> _processPayment(String provider) async {
+    setState(() {
+      _isLoading = true;
+      _currentProvider = provider;
+    });
+
+    try {
+      final user = Provider.of<AuthProvider>(context, listen: false).user;
+      if (user == null) {
+         if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Debes iniciar sesión para suscribirte')),
+            );
+         }
+         return;
+      }
+      
+      final paymentService = PaymentService();
+      String? url;
+
+      if (provider == 'MercadoPago') {
+        url = await paymentService.initiateMercadoPagoPayment(
+          userId: user.id,
+          amount: widget.amount,
+          concept: "Suscripción ${widget.planName}",
+        );
+      } else {
+        url = await paymentService.initiatePayPalPayment(
+          userId: user.id,
+          amount: widget.amount,
+          concept: "Suscripción ${widget.planName}",
+        );
+      }
+
+      if (url != null) {
+        // Lanzamos la URL
+        await paymentService.launchPaymentUrl(url);
+        
+        // Cambiamos estado a "Esperando confirmación"
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _isWaitingForPayment = true;
+          });
+        }
+      } else {
+        if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Error al iniciar el pago')),
+            );
+            setState(() => _isLoading = false);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(content: Text('Error: $e')),
+         );
+         setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<void> _confirmPayment() async {
+    setState(() => _isLoading = true);
+    
+    // Simulamos verificación con backend
+    await Future.delayed(const Duration(seconds: 2));
+    
+    final user = Provider.of<AuthProvider>(context, listen: false).user;
+    if (user != null) {
+      final paymentService = PaymentService();
+      // Simulamos upgrade exitoso
+      await paymentService.upgradeUserToPremium(user.id, widget.planName);
+    }
+
+    if (mounted) {
+      Navigator.pop(context); // Cerrar modal
+      // Mostrar éxito
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          backgroundColor: Theme.of(context).cardColor,
+          icon: const Icon(Icons.check_circle_rounded, color: Colors.green, size: 60),
+          title: Text('¡Pago Exitoso!', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          content: Text(
+            'Bienvenido a Premium. Tu suscripción ${widget.planName} está activa.',
+            textAlign: TextAlign.center,
+            style: GoogleFonts.outfit(),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Comenzar', style: TextStyle(color: AppConstants.primaryColor)),
             ),
           ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Entendido', style: TextStyle(color: AppConstants.primaryColor)),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Si estamos esperando confirmación, mostramos UI diferente
+    if (_isWaitingForPayment) {
+      return Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.hourglass_top_rounded, size: 50, color: AppConstants.primaryColor),
+            const SizedBox(height: 16),
+            Text(
+              'Pagando con $_currentProvider...',
+              style: GoogleFonts.outfit(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Por favor completa el pago en tu navegador. Al terminar, presiona "Confirmar Pago".',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            _isLoading 
+              ? const CircularProgressIndicator(color: AppConstants.primaryColor)
+              : ElevatedButton(
+                  onPressed: _confirmPayment,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  ),
+                  child: const Text('CONFIRMAR PAGO'),
+                ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => setState(() => _isWaitingForPayment = false),
+              child: const Text('Cancelar / Volver', style: TextStyle(color: Colors.grey)),
+            ),
+             const SizedBox(height: 24),
+          ],
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text(
+                'Resumen de Suscripción',
+                style: GoogleFonts.outfit(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: ThemeColors.primaryText(context),
+                ),
+              ),
+              const Spacer(),
+              IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(Icons.close)),
+            ],
           ),
+          const SizedBox(height: 24),
+          _buildDetailRow(context, 'Plan:', widget.planName),
+          const SizedBox(height: 12),
+          _buildDetailRow(context, 'Precio:', '\$${widget.amount} MXN'),
+          const SizedBox(height: 32),
+          
+          if (_isLoading)
+            const Center(child: CircularProgressIndicator(color: AppConstants.primaryColor))
+          else
+            Column(
+              children: [
+                // Botón MercadoPago
+                ElevatedButton(
+                  onPressed: () => _processPayment('MercadoPago'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF009EE3), // MercadoPago Blue
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                       const Icon(Icons.account_balance_wallet, size: 20),
+                       const SizedBox(width: 8),
+                       Text(
+                        'MERCADO PAGO',
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                // Botón PayPal
+                ElevatedButton(
+                  onPressed: () => _processPayment('PayPal'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF003087), // PayPal Blue
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    elevation: 0,
+                    minimumSize: const Size(double.infinity, 50),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                       const Icon(Icons.payment, size: 20),
+                       const SizedBox(width: 8),
+                       Text(
+                        'PAYPAL',
+                        style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          const SizedBox(height: 24),
         ],
       ),
+    );
+  }
+
+  Widget _buildDetailRow(BuildContext context, String label, String value) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.outfit(
+            color: ThemeColors.secondaryText(context),
+            fontSize: 16,
+          ),
+        ),
+        Text(
+          value,
+          style: GoogleFonts.outfit(
+            color: ThemeColors.primaryText(context),
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ],
     );
   }
 }

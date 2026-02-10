@@ -248,18 +248,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                                           Icons.fullscreen,
                                           color: Colors.white,
                                         ),
-                                        onPressed: () {
-                                          // TODO: Implement fullscreen
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text(
-                                                'Fullscreen próximamente',
-                                                style: GoogleFonts.outfit(),
-                                              ),
-                                              duration: const Duration(seconds: 1),
-                                            ),
-                                          );
-                                        },
+                                        onPressed: _toggleFullScreen,
                                       ),
                                     ],
                                   ),
@@ -271,6 +260,194 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                       ],
                     ),
                   ),
+      ),
+    );
+  }
+
+  void _toggleFullScreen() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenVideoPlayer(controller: _controller),
+      ),
+    );
+  }
+}
+
+class FullScreenVideoPlayer extends StatefulWidget {
+  final VideoPlayerController controller;
+
+  const FullScreenVideoPlayer({super.key, required this.controller});
+
+  @override
+  State<FullScreenVideoPlayer> createState() => _FullScreenVideoPlayerState();
+}
+
+class _FullScreenVideoPlayerState extends State<FullScreenVideoPlayer> {
+  bool _showControls = true;
+  double _volume = 1.0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Ocultar barras de sistema para inmersión total
+    // SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    // Forzar orientación horizontal si se desea (opcional, por ahora dejamos libre rotación o forzamos en build)
+  }
+
+  @override
+  void dispose() {
+    // Restaurar UI del sistema al salir
+    // SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    super.dispose();
+  }
+
+  void _togglePlayPause() {
+    setState(() {
+      if (widget.controller.value.isPlaying) {
+        widget.controller.pause();
+      } else {
+        widget.controller.play();
+      }
+    });
+  }
+
+  void _toggleControls() {
+    setState(() {
+      _showControls = !_showControls;
+    });
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final hours = duration.inHours;
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    
+    if (hours > 0) {
+      return '$hours:$minutes:$seconds';
+    }
+    return '$minutes:$seconds';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: _toggleControls,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Center(
+              child: AspectRatio(
+                aspectRatio: widget.controller.value.aspectRatio,
+                child: VideoPlayer(widget.controller),
+              ),
+            ),
+            
+            // Botón de cerrar fullscreen
+            if (_showControls)
+              Positioned(
+                top: 40,
+                left: 20,
+                child: CircleAvatar(
+                  backgroundColor: Colors.black.withOpacity(0.5),
+                  child: IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ),
+              ),
+
+             if (_showControls) ...[
+              // Dark overlay
+              Container(color: Colors.black.withOpacity(0.3)),
+              
+              // Play/Pause button
+              GestureDetector(
+                onTap: _togglePlayPause,
+                child: Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.6),
+                    shape: BoxShape.circle,
+                  ),
+                  child: ValueListenableBuilder(
+                    valueListenable: widget.controller,
+                    builder: (context, VideoPlayerValue value, child) {
+                      return Icon(
+                        value.isPlaying ? Icons.pause : Icons.play_arrow,
+                        size: 50,
+                        color: AppConstants.primaryColor,
+                      );
+                    },
+                  ),
+                ),
+              ),
+              
+              // Bottom controls
+              Positioned(
+                bottom: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.bottomCenter,
+                      end: Alignment.topCenter,
+                      colors: [
+                        Colors.black.withOpacity(0.8),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Progress bar
+                      VideoProgressIndicator(
+                        widget.controller,
+                        allowScrubbing: true,
+                        colors: const VideoProgressColors(
+                          playedColor: AppConstants.primaryColor,
+                          bufferedColor: Colors.grey,
+                          backgroundColor: Colors.white24,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      
+                      // Time
+                      Row(
+                        children: [
+                          ValueListenableBuilder(
+                            valueListenable: widget.controller,
+                            builder: (context, VideoPlayerValue value, child) {
+                              return Text(
+                                '${_formatDuration(value.position)} / ${_formatDuration(value.duration)}',
+                                style: GoogleFonts.outfit(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              );
+                            },
+                          ),
+                          const Spacer(),
+                           IconButton(
+                            icon: const Icon(Icons.fullscreen_exit, color: Colors.white),
+                            onPressed: () => Navigator.pop(context),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }

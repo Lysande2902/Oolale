@@ -509,21 +509,53 @@ class _GigDetailScreenState extends State<GigDetailScreen> {
       left: 20,
       right: 20,
       child: SafeArea(
-        child: ElevatedButton(
-          onPressed: (_isPostulating || _alreadyInLineup) ? null : _postulate,
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppConstants.primaryColor,
-            foregroundColor: Colors.black,
-            minimumSize: const Size(double.infinity, 55),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            elevation: 0,
-          ),
-          child: _isPostulating
-              ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
-              : Text(
-                  _alreadyInLineup ? 'Interés Enviado' : 'Unirme',
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Botón de Chat del Evento (solo si ya está en el lineup)
+            if (_alreadyInLineup) ...[
+              ElevatedButton.icon(
+                onPressed: () {
+                  context.push('/event-chat/${widget.gigId}', extra: {
+                    'eventTitle': _gig!.titulo,
+                  });
+                },
+                icon: const Icon(Icons.chat_bubble_outline, size: 20),
+                label: Text(
+                  'Chat del Evento',
                   style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
                 ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Theme.of(context).cardColor,
+                  foregroundColor: AppConstants.primaryColor,
+                  minimumSize: const Size(double.infinity, 55),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: const BorderSide(color: AppConstants.primaryColor, width: 1.5),
+                  ),
+                  elevation: 0,
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            // Botón principal de acción
+            ElevatedButton(
+              onPressed: (_isPostulating || _alreadyInLineup) ? null : _postulate,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppConstants.primaryColor,
+                foregroundColor: Colors.black,
+                minimumSize: const Size(double.infinity, 55),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                elevation: 0,
+              ),
+              child: _isPostulating
+                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.black, strokeWidth: 2))
+                  : Text(
+                      _alreadyInLineup ? 'Interés Enviado' : 'Unirme',
+                      style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+            ),
+          ],
         ),
       ),
     );

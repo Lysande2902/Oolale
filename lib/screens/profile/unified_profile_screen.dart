@@ -37,11 +37,59 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
   bool _isBlocked = false;
   bool _isMyProfile = false;
   bool _hasInteracted = false; // Para verificar si han trabajado juntos o son conexiones
+  
+  // Para actualización en tiempo real
+  RealtimeChannel? _connectionChannel;
 
   @override
   void initState() {
     super.initState();
     _loadProfile();
+    _setupRealtimeListener();
+  }
+  
+  @override
+  void dispose() {
+    _connectionChannel?.unsubscribe();
+    super.dispose();
+  }
+  
+  // Configurar listener de Realtime para actualizar contador de seguidores
+  void _setupRealtimeListener() {
+    _connectionChannel = _supabase
+        .channel('connections:${widget.userId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'conexiones',
+          callback: (payload) {
+            debugPrint('🔄 Cambio en conexiones detectado, recargando contador...');
+            _reloadFollowersCount();
+          },
+        )
+        .subscribe();
+  }
+  
+  // Recargar solo el contador de seguidores
+  Future<void> _reloadFollowersCount() async {
+    try {
+      // Contar conexiones donde este usuario es el usuario_id
+      // (en sistema bidireccional, estas son sus conexiones/seguidores)
+      final seguidoresData = await _supabase
+          .from('conexiones')
+          .select()
+          .eq('usuario_id', widget.userId)
+          .eq('estatus', 'accepted');
+      
+      if (mounted) {
+        setState(() {
+          _seguidoresCount = (seguidoresData as List).length;
+        });
+        debugPrint('✅ Contador actualizado: $_seguidoresCount seguidores');
+      }
+    } catch (e) {
+      debugPrint('❌ Error recargando contador de seguidores: $e');
+    }
   }
 
   Future<void> _loadProfile() async {
@@ -93,7 +141,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
       final seguidoresData = await _supabase
           .from('conexiones')
           .select()
-          .eq('conectado_id', widget.userId)
+          .eq('usuario_id', widget.userId)
           .eq('estatus', 'accepted');
 
       final musicData = await _supabase
@@ -304,7 +352,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
       child: SafeArea(
         child: Stack(
           children: [
-            if (!_isMyProfile)
+            if (!_isMyProfile) ...[
               Positioned(
                 top: 15,
                 left: 15,
@@ -319,6 +367,54 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
                   ),
                 ),
               ),
+              Positioned(
+                top: 15,
+                right: 15,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  child: PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert, color: ThemeColors.icon(context)),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    color: Theme.of(context).cardColor,
+                    onSelected: (value) {
+                      if (value == 'report') {
+                        context.push('/create-report', extra: {
+                          'reportedUserId': widget.userId,
+                          'reportedUserName': _profileData?['nombre_artistico'] ?? 'Usuario',
+                        });
+                      } else if (value == 'block') {
+                        _showBlockConfirmDialog();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'report',
+                        child: Row(
+                          children: [
+                            Icon(Icons.flag_outlined, color: ThemeColors.icon(context), size: 20),
+                            const SizedBox(width: 12),
+                            Text('Reportar usuario', style: GoogleFonts.outfit(color: ThemeColors.primaryText(context))),
+                          ],
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'block',
+                        child: Row(
+                          children: [
+                            const Icon(Icons.block, color: Colors.red, size: 20),
+                            const SizedBox(width: 12),
+                            Text('Bloquear usuario', style: GoogleFonts.outfit(color: Colors.red)),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
             if (_isMyProfile)
               Positioned(
                 top: 15,
@@ -329,7 +425,7 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
-                    icon: Icon(Icons.settings_outlined, color: ThemeColors.icon(context)),
+                    icon: Icon(Icons.settings_outlined, color: isDark ? Colors.white70 : Colors.black),
                     onPressed: () => context.push('/settings'),
                   ),
                 ),
@@ -890,6 +986,35 @@ class _UnifiedProfileScreenState extends State<UnifiedProfileScreen> {
               foregroundColor: Colors.white,
             ),
             child: Text('Bloquear', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      await _blockUser();
+    }
+  }
+
+  Future<void> _showBlockConfirmDialog() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Theme.of(context).cardColor,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Text('Bloquear Usuario', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, color: ThemeColors.primaryText(context))),
+        content: Text(
+          '¿Seguro que quieres bloquear a este usuario? No podrán ver tu perfil ni enviarte mensajes.',
+          style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context)),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Cancelar', style: GoogleFonts.outfit(color: ThemeColors.secondaryText(context))),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Bloquear', style: GoogleFonts.outfit(color: Colors.red, fontWeight: FontWeight.bold)),
           ),
         ],
       ),

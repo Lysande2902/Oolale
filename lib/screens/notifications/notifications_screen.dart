@@ -232,10 +232,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
           break;
         case 'message':
         case 'new_message':
-          if (data['conversation_id'] != null) {
-            context.push('/chat/${data['conversation_id']}');
+          // La ruta correcta es /messages/:id, no /chat/:id
+          if (data['sender_id'] != null) {
+            context.push('/messages/${data['sender_id']}');
           } else if (data['user_id'] != null) {
             context.push('/messages/${data['user_id']}');
+          } else {
+            context.push('/messages');
           }
           break;
         default:

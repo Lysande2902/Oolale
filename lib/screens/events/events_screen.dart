@@ -28,7 +28,6 @@ class _EventsScreenState extends State<EventsScreen> {
   String _sortBy = 'date'; // date, proximity, popularity
   
   // Filtros consolidados
-  String? _selectedType;
   DateTime? _startDate;
   DateTime? _endDate;
   
@@ -128,9 +127,6 @@ class _EventsScreenState extends State<EventsScreen> {
       }
       
       // Filtros Avanzados
-      if (_selectedType != null) {
-        queryBuilder = queryBuilder.eq('tipo', _selectedType!);
-      }
       if (_startDate != null) {
         queryBuilder = queryBuilder.gte('fecha_gig', _startDate!.toIso8601String().split('T')[0]);
       }
@@ -180,7 +176,6 @@ class _EventsScreenState extends State<EventsScreen> {
 
   void _clearFilters() {
     setState(() {
-      _selectedType = null;
       _startDate = null;
       _endDate = null;
       _selectedView = 'upcoming';
@@ -425,22 +420,6 @@ class _EventsScreenState extends State<EventsScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Tipo de Evento
-                Text('Tipo de Evento', style: GoogleFonts.outfit(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    'concierto', 'jam_session', 'festival', 'ensayo', 'clase'
-                  ].map((type) => _buildModalChip(
-                    label: type.replaceAll('_', ' ').toUpperCase(),
-                    isSelected: _selectedType == type,
-                    onTap: () => setModalState(() => _selectedType = _selectedType == type ? null : type),
-                  )).toList(),
-                ),
-                const SizedBox(height: 24),
-
                 // Botón Aplicar
                 const SizedBox(height: 12),
                 SizedBox(
@@ -597,7 +576,7 @@ class _EventCard extends StatelessWidget {
       onTap: () => context.push('/gig/${event.id}'),
       child: Container(
         margin: const EdgeInsets.only(bottom: 14),
-        height: 120,
+        constraints: const BoxConstraints(minHeight: 120),
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(16),
@@ -611,22 +590,24 @@ class _EventCard extends StatelessWidget {
         ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
-          child: Row(
-            children: [
-              // Imagen o fecha
-              if (hasImage)
-                Stack(
-                  children: [
-                    Container(
-                      width: 100,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        image: DecorationImage(
-                          image: NetworkImage(event.flyerUrl!),
-                          fit: BoxFit.cover,
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Imagen o fecha
+                if (hasImage)
+                  Stack(
+                    children: [
+                      Container(
+                        width: 100,
+                        height: double.infinity,
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: NetworkImage(event.flyerUrl!),
+                            fit: BoxFit.cover,
+                          ),
                         ),
                       ),
-                    ),
                     // Overlay con fecha
                     Positioned(
                       top: 8,
@@ -667,7 +648,7 @@ class _EventCard extends StatelessWidget {
                     // Gradient overlay
                     Container(
                       width: 100,
-                      height: 120,
+                      height: double.infinity,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           begin: Alignment.centerLeft,
@@ -775,7 +756,7 @@ class _EventCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      const Spacer(),
+                      const SizedBox(height: 8),
                       Row(
                         children: [
                           Icon(
@@ -831,6 +812,7 @@ class _EventCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

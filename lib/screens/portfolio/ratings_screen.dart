@@ -42,28 +42,27 @@ class _RatingsScreenState extends State<RatingsScreen> {
       final List<Calificacion> calificaciones =
           List<Calificacion>.from(calificacionesResponse.map((x) => Calificacion.fromJson(x)));
 
-      // 2. Obtener datos de reputación
-      final reputacionResponse = await _supabase
-          .from('puntuacion_reputacion')
-          .select()
-          .eq('profile_id', widget.userId)
+      // 2. Calcular datos de reputación desde el perfil
+      final perfilReputacion = await _supabase
+          .from('perfiles')
+          .select('created_at')
+          .eq('id', widget.userId)
           .maybeSingle();
 
-      final Reputacion reputacion = reputacionResponse != null 
-          ? Reputacion.fromJson(reputacionResponse)
-          : Reputacion(puntuacion_final: 0, dias_en_plataforma: 0, tasa_respuesta: 0, eventos_completados: 0);
+      // Calcular días en plataforma
+      final diasEnPlataforma = perfilReputacion != null
+          ? DateTime.now().difference(DateTime.parse(perfilReputacion['created_at'])).inDays
+          : 0;
 
-      // 3. Obtener referencias
-      final referenciasResponse = await _supabase
-          .from('referencias')
-          .select()
-          .eq('evaluado_id', widget.userId)
-          .order('created_at', ascending: false);
+      // Crear objeto de reputación con datos calculados
+      final Reputacion reputacion = Reputacion(
+        puntuacion_final: calificaciones.isEmpty ? 0.0 : (calificaciones.map((c) => c.estrellas).reduce((a, b) => a + b) / calificaciones.length),
+        dias_en_plataforma: diasEnPlataforma,
+        tasa_respuesta: 0,
+        eventos_completados: 0,
+      );
 
-      final List<Referencia> referencias =
-          List<Referencia>.from(referenciasResponse.map((x) => Referencia.fromJson(x)));
-
-      // 4. Obtener datos del perfil (rating_promedio, total_calificaciones)
+      // 3. Obtener datos del perfil (rating_promedio, total_calificaciones)
       final perfilResponse = await _supabase
           .from('perfiles')
           .select('nombre_artistico, foto_perfil, rating_promedio, total_calificaciones, verificado')
@@ -73,7 +72,6 @@ class _RatingsScreenState extends State<RatingsScreen> {
       return RatingsData(
         calificaciones: calificaciones,
         reputacion: reputacion,
-        referencias: referencias,
         nombreArtistico: perfilResponse['nombre_artistico'] ?? 'Usuario',
         fotoPerfil: perfilResponse['foto_perfil'],
         ratingPromedio: (perfilResponse['rating_promedio'] ?? 0).toDouble(),
@@ -144,15 +142,11 @@ class _RatingsScreenState extends State<RatingsScreen> {
 
                 const SizedBox(height: 16),
 
-                // Tab: Comentarios
+                // Comentarios
                 if (data.calificaciones.isNotEmpty)
                   _buildCommentsSection(data.calificaciones)
                 else
                   _buildEmptyState(),
-
-                // Tab: Referencias
-                if (data.referencias.isNotEmpty)
-                  _buildReferencesSection(data.referencias),
 
                 // Botón para dejar calificación
                 if (widget.isOwnProfile)
@@ -345,81 +339,6 @@ class _RatingsScreenState extends State<RatingsScreen> {
                       cal.comentario,
                       style: const TextStyle(color: Colors.white, fontSize: 13),
                     ),
-                  const SizedBox(height: 8),
-                  // Tipo de interacción
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[700],
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      cal.tipo_interaccion,
-                      style: TextStyle(color: Colors.grey[300], fontSize: 11),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  /// Sección de referencias
-  Widget _buildReferencesSection(List<Referencia> referencias) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: const Text(
-            'Referencias',
-            style: TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-        ),
-        ...referencias.map((ref) {
-          return Card(
-            color: Theme.of(context).cardColor,
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        ref.titulo,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: ref.verificado ? Colors.green[700] : Colors.grey[700],
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          ref.verificado ? 'Verificado' : 'Pendiente',
-                          style: const TextStyle(color: Colors.white, fontSize: 11),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    ref.descripcion,
-                    style: TextStyle(color: Colors.grey[300], fontSize: 12),
-                  ),
                 ],
               ),
             ),
@@ -670,7 +589,6 @@ class _LeaveRatingScreenState extends State<LeaveRatingScreen> {
 class RatingsData {
   final List<Calificacion> calificaciones;
   final Reputacion reputacion;
-  final List<Referencia> referencias;
   final String nombreArtistico;
   final String? fotoPerfil;
   final double ratingPromedio;
@@ -680,7 +598,6 @@ class RatingsData {
   RatingsData({
     required this.calificaciones,
     required this.reputacion,
-    required this.referencias,
     required this.nombreArtistico,
     required this.fotoPerfil,
     required this.ratingPromedio,
@@ -709,9 +626,9 @@ class Calificacion {
   factory Calificacion.fromJson(Map<String, dynamic> json) {
     return Calificacion(
       id: json['id'].toString(),
-      estrellas: json['estrellas'],
+      estrellas: json['puntuacion'] ?? json['estrellas'] ?? 5, // CORREGIDO: usar 'puntuacion' de la BD
       comentario: json['comentario'] ?? '',
-      tipo_interaccion: json['tipo_interaccion'] ?? 'colaboracion',
+      tipo_interaccion: json['tipo_interaccion'] ?? 'evento',
       createdAt: DateTime.parse(json['created_at']),
     );
   }
@@ -736,29 +653,6 @@ class Reputacion {
       dias_en_plataforma: json['dias_en_plataforma'] ?? 0,
       tasa_respuesta: (json['tasa_respuesta'] ?? 0).toDouble(),
       eventos_completados: json['eventos_completados'] ?? 0,
-    );
-  }
-}
-
-class Referencia {
-  final String id;
-  final String titulo;
-  final String descripcion;
-  final bool verificado;
-
-  Referencia({
-    required this.id,
-    required this.titulo,
-    required this.descripcion,
-    required this.verificado,
-  });
-
-  factory Referencia.fromJson(Map<String, dynamic> json) {
-    return Referencia(
-      id: json['id'].toString(),
-      titulo: json['titulo'],
-      descripcion: json['descripcion'],
-      verificado: json['verificado'] ?? false,
     );
   }
 }

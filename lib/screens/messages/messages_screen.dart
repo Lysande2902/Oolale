@@ -79,10 +79,23 @@ class _MessagesScreenState extends State<MessagesScreen> {
           // El interlocutor es el destinatario si yo envié, o el remitente si yo recibí
           final otherProfile = iAmSender ? msg['destinatario'] : msg['remitente'];
           
+          // Construir URL completa de foto de perfil si existe
+          String? photoUrl;
+          final fotoPerfilPath = otherProfile?['foto_perfil'];
+          if (fotoPerfilPath != null && fotoPerfilPath.toString().isNotEmpty) {
+            // Si ya es una URL completa, usarla directamente
+            if (fotoPerfilPath.toString().startsWith('http')) {
+              photoUrl = fotoPerfilPath.toString();
+            } else {
+              // Si es un path, construir URL de Supabase Storage
+              photoUrl = _supabase.storage.from('avatars').getPublicUrl(fotoPerfilPath.toString());
+            }
+          }
+          
           chatGroups[otherId] = Conversation(
             interlocutorId: otherId,
             interlocutorName: otherProfile?['nombre_artistico'] ?? 'Artista',
-            interlocutorPhoto: otherProfile?['foto_perfil'],
+            interlocutorPhoto: photoUrl,
             lastMessage: msg['contenido'] ?? '',
             lastDate: DateTime.parse(msg['created_at']),
             unreadCount: (!iAmSender && !msg['leido']) ? 1 : 0,

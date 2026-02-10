@@ -72,7 +72,7 @@ class _PublicProfileScreenState extends State<PublicProfileScreen> {
       final seguidoresData = await _supabase
           .from('conexiones')
           .select()
-          .eq('conectado_id', widget.userId)
+          .eq('usuario_id', widget.userId)
           .eq('estatus', 'accepted');
 
       final musicData = await _supabase

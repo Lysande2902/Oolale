@@ -197,10 +197,11 @@ class _ProfileFollowersScreenState extends State<ProfileFollowersScreen> {
       final to = from + _limit - 1;
 
       // Unir con perfiles para obtener info del seguidor
+      // En sistema bidireccional: seguidores = conexiones donde usuario_id = este usuario
       final response = await _supabase
           .from('conexiones')
-          .select('*, perfiles:usuario_id(*)') 
-          .eq('conectado_id', widget.userId)
+          .select('*, perfiles:conectado_id(*)') 
+          .eq('usuario_id', widget.userId)
           .eq('estatus', 'accepted')
           .range(from, to);
 

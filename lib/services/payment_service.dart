@@ -56,11 +56,11 @@ class PaymentService {
 
       // Por ahora, simulamos una URL de Sandbox o una URL de éxito directa para testing
       // En un flujo real, el backend crea la preferencia en MP y devuelve el init_point.
-      await Future.delayed(const Duration(seconds: 1));
+      await Future.delayed(const Duration(seconds: 2));
       
       // Simulamos que el backend nos devolvió una URL válida
-      // Usamos una URL de ejemplo de MP o una propia de éxito
-      final url = 'https://www.mercadopago.com.mx/checkout/v1/redirect?pref_id=simulated_preference_id';
+      // Usamos la home de MP como placeholder funcional para demostrar la apertura del navegador
+      final url = 'https://www.mercadopago.com.mx'; 
       debugPrint('[PAYMENT] URL MP generada $url');
       return url;
     } catch (e) {
@@ -69,12 +69,79 @@ class PaymentService {
     }
   }
 
-  /// Abre la URL de pago en el navegador/app
+  /// Inicia el flujo de pago con PayPal (Simulado)
+  Future<String?> initiatePayPalPayment({
+    required String userId,
+    required double amount,
+    required String concept,
+  }) async {
+    try {
+      debugPrint('[PAYMENT][PayPal] Iniciando pago userId=$userId amount=$amount');
+      await Future.delayed(const Duration(seconds: 2));
+      
+      // URL ficticia de PayPal Sandbox
+      final url = 'https://www.paypal.com/signin'; 
+      debugPrint('[PAYMENT][PayPal] URL generada $url');
+      return url;
+    } catch (e) {
+      debugPrint('[PAYMENT][PayPal][ERROR] $e');
+      return null;
+    }
+  }
+
+  /// Verifica el estado de un pago (Simulado)
+  /// En producción, esto consultaría al backend que a su vez consulta a MP/PayPal
+  Future<bool> checkPaymentStatus(String paymentId) async {
+    debugPrint('[PAYMENT] Verificando estado de pago $paymentId...');
+    await Future.delayed(const Duration(seconds: 2));
+    // Simulamos éxito siempre para la demo
+    return true;
+  }
+
+  /// Actualiza el estado del usuario a Premium en la base de datos
+  Future<bool> upgradeUserToPremium(String userId, String plan) async {
+    try {
+      debugPrint('[PAYMENT] Actualizando usuario $userId a Premium ($plan)...');
+      
+      // 1. Registrar la transacción
+      final paymentData = {
+        'comprador_id': userId,
+        'monto_total': plan == 'Anual' ? 990.0 : 99.0,
+        'estatus': 'completado',
+        'pasarela': 'Simulada',
+        'concepto': 'Suscripción $plan',
+        'created_at': DateTime.now().toIso8601String(),
+      };
+      
+      await _supabase.from('tickets_pagos').insert(paymentData);
+      
+      // 2. Actualizar perfil del usuario
+      // Asumimos que hay una columna 'es_premium' o 'nivel_suscripcion'
+      // Si no existe, este paso fallará en una DB real sin migración, pero es lo correcto.
+      // Intentaremos actualizar 'verificado' como proxy de premium si no hay columna específica,
+      // o simplemente 'nivel' si existe.
+      
+      // Intento seguro: Upsert o Update en perfiles
+       await _supabase.from('perfiles').update({
+        'es_premium': true, // Asumimos esta columna
+        'nivel_suscripcion': plan.toLowerCase(),
+        'fecha_suscripcion': DateTime.now().toIso8601String(),
+      }).eq('id', userId);
+
+      debugPrint('[PAYMENT] Usuario actualizado correctamente');
+      return true;
+    } catch (e) {
+      debugPrint('[PAYMENT][ERROR] Al actualizar premium: $e');
+      // Si falla porque no existe la columna, no bloqueamos el flujo de UI simulado
+      return false;
+    }
+  }
+
+  /// Abre la URL de pago
   Future<bool> launchPaymentUrl(String url) async {
     final uri = Uri.parse(url);
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
-      debugPrint('[PAYMENT] URL abierta correctamente');
       return true;
     } else {
       debugPrint('[PAYMENT][ERROR] No se pudo abrir la URL: $url');

@@ -22,7 +22,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
 
   DateTime _selectedDate = DateTime.now().add(const Duration(days: 7));
   TimeOfDay _selectedTime = const TimeOfDay(hour: 20, minute: 0);
-  String _selectedType = 'jam_session';
+  String _selectedType = 'concierto';
   bool _isLoading = false;
   
   final List<String> _types = ['jam_session', 'ensayo', 'concierto', 'festival', 'taller'];
@@ -120,9 +120,6 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
                 ],
               ),
               const SizedBox(height: 30),
-              _buildSectionTitle('Tipo'),
-              _buildTypeSelector(),
-              const SizedBox(height: 30),
               _buildSectionTitle('Detalles'),
               _buildTextField(_descController, 'Breve descripción...', Icons.notes, maxLines: 4),
               const SizedBox(height: 50),
@@ -209,36 +206,7 @@ class _CreateEventScreenState extends State<CreateEventScreen> {
     );
   }
 
-  Widget _buildTypeSelector() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: ThemeColors.divider(context)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(Theme.of(context).brightness == Brightness.dark ? 0.2 : 0.03),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: DropdownButtonHideUnderline(
-        child: DropdownButton<String>(
-          value: _selectedType,
-          isExpanded: true,
-          dropdownColor: Theme.of(context).cardColor,
-          icon: const Icon(Icons.arrow_drop_down, color: AppConstants.primaryColor),
-          items: _types.map((m) => DropdownMenuItem(
-            value: m,
-            child: Text(m.replaceAll('_', ' ').toUpperCase(), style: GoogleFonts.outfit(color: ThemeColors.primaryText(context), fontSize: 14)),
-          )).toList(),
-          onChanged: (val) => setState(() => _selectedType = val!),
-        ),
-      ),
-    );
-  }
+
 
   Widget _buildSaveButton() {
     return SizedBox(

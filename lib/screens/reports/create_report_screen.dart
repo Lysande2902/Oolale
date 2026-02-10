@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../services/api_service.dart';
 import '../../config/constants.dart';
 import '../../config/theme_colors.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class CreateReportScreen extends StatefulWidget {
-  final int reportedUserId;
+  final String reportedUserId;
   final String reportedUserName;
 
   const CreateReportScreen({
@@ -19,6 +20,7 @@ class CreateReportScreen extends StatefulWidget {
 }
 
 class _CreateReportScreenState extends State<CreateReportScreen> {
+  final _supabase = Supabase.instance.client;
   final _descController = TextEditingController();
   String _selectedReason = 'spam';
   bool _isLoading = false;
@@ -46,11 +48,16 @@ class _CreateReportScreenState extends State<CreateReportScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final api = ApiService();
-      await api.post('/report', {
-        'reportedUserId': widget.reportedUserId,
-        'reason': _selectedReason,
-        'description': _descController.text
+      final myId = _supabase.auth.currentUser?.id;
+      if (myId == null) throw Exception('Usuario no autenticado');
+
+      await _supabase.from('reportes').insert({
+        'usuario_id': myId,
+        'reportado_id': widget.reportedUserId,
+        'motivo': _selectedReason,
+        'descripcion': _descController.text,
+        'estado': 'pendiente',
+        'created_at': DateTime.now().toIso8601String(), // Asegurar timestamp
       });
 
       if (mounted) {
