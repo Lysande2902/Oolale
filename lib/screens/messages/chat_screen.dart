@@ -17,6 +17,7 @@ import '../../widgets/audio_player_widget.dart';
 import 'package:intl/intl.dart';
 import 'package:animate_do/animate_do.dart';
 import '../reports/report_content_screen.dart';
+import '../../widgets/typing_indicator.dart';
 
 class ChatScreen extends StatefulWidget {
   final String userId; 
@@ -1129,14 +1130,9 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           const SizedBox(width: 8),
           SizedBox(
-            width: 20,
+            width: 40,
             height: 20,
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              valueColor: AlwaysStoppedAnimation<Color>(
-                ThemeColors.secondaryText(context),
-              ),
-            ),
+            child: TypingIndicator(color: ThemeColors.secondaryText(context)),
           ),
         ],
       ),
